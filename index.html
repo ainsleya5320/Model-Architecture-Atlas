@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Model Atlas — LLM architectures for investors</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>MODEL <span class="accent">ATLAS</span></h1>
+    <span class="sub">LLM architectures, Raschka-style — read through an investor's lens</span>
+  </div>
+  <nav class="tabs">
+    <button class="active" data-tab="models">Model Index</button>
+    <button data-tab="compare">Compare</button>
+    <button data-tab="concepts">Concepts</button>
+    <button data-tab="glossary">Glossary</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ================= MODELS ================= -->
+  <section class="tab active" id="tab-models">
+
+    <div class="card chart-card">
+      <div class="charthead">
+        <h2>The one chart that explains modern LLM economics</h2>
+        <span class="note">log-log · hover any point</span>
+      </div>
+      <p class="body">Total parameters set the <b>memory</b> bill (the whole model must sit in GPU RAM). Active parameters set the <b>compute</b> bill (what actually runs per token). Dense models live on the diagonal — cost rises with size. Mixture-of-experts models fall far below it: huge capacity, small per-token cost. The frontier's entire post-2024 story is the widening gap between these two numbers.</p>
+      <div class="legend">
+        <span class="key"><span class="swatch" style="background:#3987e5"></span>Dense</span>
+        <span class="key"><span class="swatch" style="background:#d95926"></span>Mixture of Experts</span>
+      </div>
+      <div class="svgwrap" id="scatter"></div>
+    </div>
+
+    <div class="filters">
+      <input type="search" id="searchBox" placeholder="Search model, lab, attention…">
+      <button class="fbtn on" data-type="all">All</button>
+      <button class="fbtn" data-type="dense">Dense</button>
+      <button class="fbtn" data-type="moe">MoE</button>
+      <span class="count" id="rowCount"></span>
+    </div>
+    <div class="tablewrap">
+      <table class="models" id="modelTable"></table>
+    </div>
+
+    <div class="card" style="margin-top:18px">
+      <h2 id="closedTitle"></h2>
+      <p class="body" id="closedBody"></p>
+    </div>
+  </section>
+
+  <!-- ================= COMPARE ================= -->
+  <section class="tab" id="tab-compare">
+    <div class="card">
+      <h2>Head-to-head</h2>
+      <p class="body">Pick any two models. Green marks the better number on the cost-relevant rows (lower active params &amp; VRAM, longer context). Try <b>Llama&nbsp;3.1&nbsp;405B vs DeepSeek-V3</b> — the dense-to-MoE handoff in a single screen.</p>
+    </div>
+    <div class="pickers">
+      <select id="selA"></select>
+      <select id="selB"></select>
+    </div>
+    <div class="compare-grid">
+      <table class="compare" id="compareTable"></table>
+    </div>
+    <p class="compare-note">Compute per token ≈ 2 × active params (GFLOPs, generation). VRAM floor = weights only at 8-bit; KV cache and activations add more, growing with context length.</p>
+  </section>
+
+  <!-- ================= CONCEPTS ================= -->
+  <section class="tab" id="tab-concepts">
+
+    <div class="card">
+      <h2>Anatomy: what a model actually is</h2>
+      <p class="body" id="anatomyBody"></p>
+      <div class="svgwrap" id="anatomyDiagram" style="margin-top:14px"></div>
+    </div>
+
+    <div class="card">
+      <h2>Dense vs Mixture of Experts: the trade that defines the cycle</h2>
+      <p class="body" id="moeBody"></p>
+      <div class="svgwrap" id="moeDiagram" style="margin-top:14px"></div>
+      <div class="takeaway" id="moeTakeaway"></div>
+    </div>
+
+    <div class="card chart-card">
+      <div class="charthead">
+        <h2>The march toward sparsity</h2>
+        <span class="note">share of parameters that fire per token, by release date</span>
+      </div>
+      <div class="legend">
+        <span class="key"><span class="swatch" style="background:#3987e5"></span>Dense (100% active)</span>
+        <span class="key"><span class="swatch" style="background:#d95926"></span>Mixture of Experts</span>
+      </div>
+      <div class="svgwrap" id="sparsityChart"></div>
+      <div class="takeaway"><b>Investor takeaway:</b> Mixtral used 28% of its weights per token (Dec&nbsp;'23). DeepSeek-V3: 5.5%. gpt-oss and Qwen3-Next: ~4%. Every step down this curve is a structural cut to the compute cost of intelligence — deflationary for inference pricing, and the reason "token demand" and "GPU demand" are no longer the same trade.</div>
+    </div>
+
+    <div class="card chart-card">
+      <h2>What it costs to serve a token</h2>
+      <p class="body" id="servingBody"></p>
+      <div class="split" style="margin-top:16px">
+        <div>
+          <h3>Compute per generated token <span style="color:#898781;font-size:11.5px;font-weight:400">(~GFLOPs = 2 × active)</span></h3>
+          <div class="svgwrap" id="computeBars"></div>
+        </div>
+        <div>
+          <h3>VRAM floor, weights at 8-bit <span style="color:#898781;font-size:11.5px;font-weight:400">(GB = total params)</span></h3>
+          <div class="svgwrap" id="vramBars"></div>
+        </div>
+      </div>
+      <div class="takeaway" id="servingTakeaway"></div>
+    </div>
+
+    <div class="card">
+      <h2>How models are made: the training pipeline</h2>
+      <p class="body" id="pipelineBody"></p>
+      <div class="svgwrap" id="pipelineDiagram" style="margin-top:14px"></div>
+      <div class="takeaway" id="pipelineTakeaway"></div>
+    </div>
+  </section>
+
+  <!-- ================= GLOSSARY ================= -->
+  <section class="tab" id="tab-glossary">
+    <div class="filters">
+      <input type="search" id="glossSearch" placeholder="Search terms…">
+      <span id="glossFilters">
+        <button class="fbtn on" data-cat="all">All</button>
+        <button class="fbtn" data-cat="arch">Architecture</button>
+        <button class="fbtn" data-cat="attn">Attention &amp; memory</button>
+        <button class="fbtn" data-cat="train">Training</button>
+        <button class="fbtn" data-cat="infer">Inference &amp; cost</button>
+        <button class="fbtn" data-cat="eco">Ecosystem</button>
+      </span>
+      <span class="count" id="glossCount"></span>
+    </div>
+    <div class="gloss-grid" id="glossGrid"></div>
+  </section>
+
+</main>
+
+<footer>
+  Specs from official papers and model cards; closed-model figures marked as rumored/estimated. Compute &amp; memory columns are rules-of-thumb for comparing serving economics, not vendor quotes. Style inspired by Sebastian Raschka's architecture comparisons. Not investment advice.
+</footer>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,285 @@
+// ============================================================
+// MODEL ATLAS — data layer
+// Specs follow the style of Sebastian Raschka's architecture
+// comparisons: what's public, what's load-bearing, what it
+// costs to run. All figures are from official papers/model
+// cards unless marked "est." or "rumored".
+// ============================================================
+
+// --- The model index -----------------------------------------
+// totalB  = total parameters, billions (what you must hold in memory)
+// activeB = parameters used per token (what you pay compute for)
+// Compute proxy: ~2 x activeB GFLOPs per generated token.
+// VRAM floor: ~1 byte/param at 8-bit quantization => totalB in GB, weights only
+// (KV cache & activations come on top and grow with context).
+
+const MODELS = [
+  {
+    id: "gpt2", name: "GPT-2 XL", lab: "OpenAI", country: "US",
+    released: "2019-02", type: "dense", totalB: 1.5, activeB: 1.5,
+    attention: "MHA", ctx: 1024, vocab: "50k", open: "open weights",
+    experts: null,
+    innovations: ["The decoder-only transformer template everything since still follows"],
+    investor: "Historical baseline. Nearly every model below is this same blueprint scaled up with efficiency tricks bolted on — useful to remember when a lab claims a 'brand new architecture'.",
+  },
+  {
+    id: "gpt3", name: "GPT-3", lab: "OpenAI", country: "US",
+    released: "2020-05", type: "dense", totalB: 175, activeB: 175,
+    attention: "MHA", ctx: 2048, vocab: "50k", open: "closed",
+    experts: null,
+    innovations: ["Proved scaling laws: 100x more params → qualitatively new abilities"],
+    investor: "The bet that started the capex supercycle: predictable returns to scale justified billion-dollar training clusters. Every 'more GPUs' thesis traces back here.",
+  },
+  {
+    id: "llama2-70b", name: "Llama 2 70B", lab: "Meta", country: "US",
+    released: "2023-07", type: "dense", totalB: 70, activeB: 70,
+    attention: "GQA", ctx: 4096, vocab: "32k", open: "open weights",
+    experts: null,
+    innovations: ["Mainstreamed grouped-query attention (GQA) — shrinks the KV cache several-fold"],
+    investor: "Meta giving away frontier-adjacent weights reset pricing power for everyone selling API access. Also the moment 'serving memory' optimizations (GQA) became table stakes.",
+  },
+  {
+    id: "mistral-7b", name: "Mistral 7B", lab: "Mistral AI", country: "FR",
+    released: "2023-09", type: "dense", totalB: 7.3, activeB: 7.3,
+    attention: "GQA + sliding window", ctx: 8192, vocab: "32k", open: "open weights",
+    experts: null,
+    innovations: ["Sliding-window attention: each token only attends locally, capping KV-cache growth", "Beat Llama 2 13B with half the parameters"],
+    investor: "Proof that data quality + architecture beats raw size — a recurring risk to any thesis that assumes the biggest spender automatically wins.",
+  },
+  {
+    id: "mixtral", name: "Mixtral 8x7B", lab: "Mistral AI", country: "FR",
+    released: "2023-12", type: "moe", totalB: 46.7, activeB: 12.9,
+    attention: "GQA", ctx: 32768, vocab: "32k", open: "open weights",
+    experts: { total: 8, perTok: 2, shared: 0 },
+    innovations: ["First high-profile open mixture-of-experts: 8 experts, 2 active per token"],
+    investor: "The MoE demo for the masses: quality of a ~47B model at the per-token compute cost of a ~13B model. This trade — memory for compute — is now the dominant design at the frontier.",
+  },
+  {
+    id: "llama31-405b", name: "Llama 3.1 405B", lab: "Meta", country: "US",
+    released: "2024-07", type: "dense", totalB: 405, activeB: 405,
+    attention: "GQA", ctx: 131072, vocab: "128k", open: "open weights",
+    experts: null,
+    innovations: ["Peak open dense: 405B params, every one of them used on every token", "15T-token training run"],
+    investor: "The end of the dense road. Serving it needs a multi-GPU node and you pay for all 405B on every token — the pain that pushed the whole industry to MoE the following year.",
+  },
+  {
+    id: "deepseek-v3", name: "DeepSeek-V3", lab: "DeepSeek", country: "CN",
+    released: "2024-12", type: "moe", totalB: 671, activeB: 37,
+    attention: "MLA", ctx: 131072, vocab: "129k", open: "open weights",
+    experts: { total: 256, perTok: 8, shared: 1 },
+    innovations: ["Multi-head latent attention (MLA): compresses the KV cache ~10x+", "256 fine-grained experts + 1 always-on shared expert", "FP8 training; claimed ~$5.6M final-run compute cost"],
+    investor: "The cost-disruption event. A 671B-capacity model that only spends 37B of compute per token, trained for single-digit millions (final run). Directly triggered the Jan 2025 repricing of AI-infra stocks.",
+  },
+  {
+    id: "deepseek-r1", name: "DeepSeek-R1", lab: "DeepSeek", country: "CN",
+    released: "2025-01", type: "moe", totalB: 671, activeB: 37,
+    attention: "MLA", ctx: 131072, vocab: "129k", open: "open weights",
+    experts: { total: 256, perTok: 8, shared: 1 },
+    innovations: ["Same chassis as V3; the news is the training: reasoning via RL on verifiable rewards (GRPO)", "Showed chain-of-thought ability can be trained with RL alone, then distilled into small models"],
+    investor: "Proof that 'reasoning' is a post-training recipe, not a proprietary architecture — and it leaked to open weights within weeks of OpenAI's o1. Moat narratives now rest on data, RL infrastructure, and distribution, not secret architectures.",
+  },
+  {
+    id: "olmo2-32b", name: "OLMo 2 32B", lab: "Ai2", country: "US",
+    released: "2025-03", type: "dense", totalB: 32, activeB: 32,
+    attention: "MHA", ctx: 4096, vocab: "100k", open: "fully open",
+    experts: null,
+    innovations: ["Fully open: weights AND training data, code, logs, checkpoints"],
+    investor: "The transparency benchmark. 'Open weights' (Llama, DeepSeek) still hides the data recipe; OLMo shows everything. Useful yardstick for how much of a lab's edge is data vs architecture.",
+  },
+  {
+    id: "gemma3-27b", name: "Gemma 3 27B", lab: "Google", country: "US",
+    released: "2025-03", type: "dense", totalB: 27, activeB: 27,
+    attention: "GQA + sliding window (5:1)", ctx: 131072, vocab: "262k", open: "open weights",
+    experts: null,
+    innovations: ["5 local-attention layers per 1 global layer, window 1024 — slashes KV-cache memory", "Designed to run well on a single consumer/workstation GPU"],
+    investor: "Google's play for the on-device / single-GPU tier. Watch this segment: inference that never touches a cloud GPU is invisible to 'token demand' forecasts built on API pricing.",
+  },
+  {
+    id: "llama4-maverick", name: "Llama 4 Maverick", lab: "Meta", country: "US",
+    released: "2025-04", type: "moe", totalB: 400, activeB: 17,
+    attention: "GQA (chunked)", ctx: 1000000, vocab: "202k", open: "open weights*",
+    experts: { total: 128, perTok: 1, shared: 1 },
+    innovations: ["Meta's dense-to-MoE conversion: 400B capacity, only 17B active", "1M-token context window"],
+    investor: "Even the loudest dense-model advocate capitulated to MoE economics. The asterisk: license restrictions on big companies — 'open' increasingly comes with terms worth reading.",
+  },
+  {
+    id: "qwen3-235b", name: "Qwen3 235B-A22B", lab: "Alibaba", country: "CN",
+    released: "2025-04", type: "moe", totalB: 235, activeB: 22,
+    attention: "GQA", ctx: 131072, vocab: "152k", open: "open weights",
+    experts: { total: 128, perTok: 8, shared: 0 },
+    innovations: ["Dropped the shared expert (vs DeepSeek) — design consensus still unsettled", "Ships a whole family, 0.6B dense up to this flagship"],
+    investor: "Alibaba's 'a model for every budget' strategy. The naming convention is the tell: A22B = 22B active. When labs put active params in the product name, they're marketing serving cost.",
+  },
+  {
+    id: "glm-45", name: "GLM-4.5", lab: "Zhipu AI", country: "CN",
+    released: "2025-07", type: "moe", totalB: 355, activeB: 32,
+    attention: "GQA", ctx: 131072, vocab: "151k", open: "open weights",
+    experts: { total: 160, perTok: 8, shared: 1 },
+    innovations: ["Optimized for agentic tool-use and coding workloads"],
+    investor: "Part of the mid-2025 wave of Chinese open MoE releases aimed at agents. Agent workloads consume 10-100x the tokens of chat — bullish for inference volume, bearish for per-token pricing.",
+  },
+  {
+    id: "kimi-k2", name: "Kimi K2", lab: "Moonshot AI", country: "CN",
+    released: "2025-07", type: "moe", totalB: 1043, activeB: 32,
+    attention: "MLA", ctx: 131072, vocab: "160k", open: "open weights",
+    experts: { total: 384, perTok: 8, shared: 1 },
+    innovations: ["Scaled the DeepSeek-V3 recipe to 1 trillion params (384 experts)", "First trillion-param run on the Muon optimizer", "K2 Thinking (Nov '25) added INT4-quantized reasoning"],
+    investor: "A 1T-parameter model that costs about as much to run per token as a 32B one. Capacity is becoming almost free at inference; memory (HBM) is where the bottleneck — and the margin — moved.",
+  },
+  {
+    id: "gpt-oss-120b", name: "gpt-oss-120b", lab: "OpenAI", country: "US",
+    released: "2025-08", type: "moe", totalB: 117, activeB: 5.1,
+    attention: "GQA + sliding window (1:1)", ctx: 131072, vocab: "201k", open: "open weights",
+    experts: { total: 128, perTok: 4, shared: 0 },
+    innovations: ["OpenAI's first open weights since GPT-2", "Ships MXFP4-quantized: the whole 117B model fits one 80GB GPU", "Attention sinks for long-context stability"],
+    investor: "OpenAI conceding the open tier matters strategically. Note the ratio: 117B capacity, 5.1B active — ~4% utilization per token. Sparsity is the clearest architectural trend on this page.",
+  },
+  {
+    id: "qwen3-next", name: "Qwen3-Next 80B-A3B", lab: "Alibaba", country: "CN",
+    released: "2025-09", type: "moe", totalB: 80, activeB: 3,
+    attention: "Hybrid: linear (Gated DeltaNet) 3:1 full", ctx: 262144, vocab: "152k", open: "open weights",
+    experts: { total: 512, perTok: 10, shared: 1 },
+    innovations: ["Hybrid attention: 3 of 4 layers use linear attention — KV cache barely grows with context", "Ultra-sparse: ~4% of params active per token"],
+    investor: "The direction of travel in one model: sparser experts + linear attention = long-context serving costs decoupled from context length. If this generalizes, long-context pricing collapses.",
+  },
+  {
+    id: "deepseek-v32", name: "DeepSeek-V3.2", lab: "DeepSeek", country: "CN",
+    released: "2025-09", type: "moe", totalB: 671, activeB: 37,
+    attention: "MLA + DSA sparse attention", ctx: 131072, vocab: "129k", open: "open weights",
+    experts: { total: 256, perTok: 8, shared: 1 },
+    innovations: ["DeepSeek Sparse Attention: each token attends to a learned subset of history", "Enabled a >50% API price cut for long-context use"],
+    investor: "Architecture change showing up directly in the price sheet within weeks. When evaluating AI-app margins, assume input-token costs keep falling on a curve like this.",
+  },
+];
+
+// --- Closed frontier (undisclosed specs) ---------------------
+const CLOSED_NOTE = {
+  title: "Where are GPT-5, Claude, and Gemini?",
+  body: "Frontier closed labs stopped disclosing parameter counts after GPT-4 (rumored ~1.8T MoE, never confirmed). Everything in the table above has published specs because the weights are downloadable — that's the deal with open weights: auditable economics. For closed models you must infer cost structure indirectly: API price per token, latency, rate limits, and what the lab's own open releases (gpt-oss, Gemma) reveal about their internal recipes.",
+};
+
+// --- Glossary ------------------------------------------------
+// cat: arch | attn | train | infer | eco
+const GLOSSARY = [
+  { term: "Parameter (weight)", cat: "arch",
+    plain: "One learned number inside the model. 'A 70B model' means 70 billion of them. They're set during training and fixed afterward.",
+    investor: "Params drive both cost axes: total params set the memory bill, active params set the compute bill. 'Bigger' stopped meaning 'more expensive to run' once MoE arrived." },
+  { term: "Token", cat: "arch",
+    plain: "The unit of text a model reads and writes — roughly ¾ of a word in English. 'Tokens per second' is the model's output speed.",
+    investor: "The industry's unit of revenue. API pricing, capacity planning, and 'inference demand' forecasts are all denominated in tokens." },
+  { term: "Transformer", cat: "arch",
+    plain: "The neural-net design (2017) behind every model here: a stack of identical blocks, each combining attention (look at other tokens) with a feed-forward network (process what you saw).",
+    investor: "Eight years dominant and counting. Claims of transformer-killers (Mamba, etc.) have so far been absorbed as hybrid layers rather than replacements — architecture risk to the GPU ecosystem is lower than headlines suggest." },
+  { term: "Embedding", cat: "arch",
+    plain: "The model's first step: converting each token into a long list of numbers it can do math on.",
+    investor: "Mostly plumbing, but vocabulary size × embedding size is real parameter mass — one reason 'total params' comparisons across labs need care." },
+  { term: "Dense model", cat: "arch",
+    plain: "A model that uses every parameter for every token. GPT-3 and Llama 3.1 405B are dense: all 405B params fire on each token.",
+    investor: "Simple but expensive to serve at scale — per-token compute grows one-for-one with size. The frontier abandoned pure density in 2024-25; dense now dominates only the small/on-device tier." },
+  { term: "Mixture of Experts (MoE)", cat: "arch",
+    plain: "Replace each block's feed-forward network with many parallel copies ('experts') plus a router that picks a few per token. DeepSeek-V3 has 671B params total but each token only uses 37B.",
+    investor: "The defining cost innovation of this cycle: capacity (quality) scales without scaling per-token compute (cost). Trade-off: ALL experts must sit in expensive GPU memory — bullish HBM, complicated for 'FLOPs = demand' math." },
+  { term: "Expert", cat: "arch",
+    plain: "One of the parallel feed-forward networks in an MoE layer. Not a subject-matter specialist — experts split work in unintuitive, learned ways.",
+    investor: "Trend is many small experts (DeepSeek: 256, Qwen3-Next: 512) over few big ones (Mixtral: 8) — finer routing extracts more quality per FLOP." },
+  { term: "Router (gating network)", cat: "arch",
+    plain: "The small learned layer in each MoE block that scores every expert per token and sends the token to the top few.",
+    investor: "Routing quality is a real differentiator between MoE models — and badly balanced routers waste the hardware. One reason MoE training expertise is scarce and valued." },
+  { term: "Active parameters", cat: "arch",
+    plain: "The params actually used per token: full size for dense models, the routed slice for MoE. Kimi K2: 1,043B total, 32B active.",
+    investor: "The single most useful number for serving cost. Compute per token ≈ 2 × active params. When Alibaba names a model 'A22B', they're advertising the cost line." },
+  { term: "Shared expert", cat: "arch",
+    plain: "An expert that every token passes through regardless of routing, handling common patterns so routed experts can specialize.",
+    investor: "A live design debate: DeepSeek/Kimi use one, Qwen3 dropped it. Worth knowing so spec sheets don't read as noise." },
+  { term: "Sparsity", cat: "arch",
+    plain: "The fraction of the model NOT used per token. gpt-oss-120b activates ~4% of its weights per token — highly sparse.",
+    investor: "The frontier's sparsity keeps rising (Mixtral 28% active → DeepSeek 5.5% → Qwen3-Next 4%). Each step down cuts compute per token — a structural deflationary force on inference pricing." },
+  { term: "Attention", cat: "attn",
+    plain: "The mechanism that lets each token look back at every earlier token and decide what's relevant. It's why models handle context at all.",
+    investor: "Attention cost grows with context length — it's the reason long context is priced at a premium and the target of most 2025 architecture work (MLA, sliding window, sparse, linear)." },
+  { term: "KV cache", cat: "attn",
+    plain: "Memory storing each previous token's attention data (Keys/Values) so the model doesn't recompute history for every new token. Grows with every token in context.",
+    investor: "The hidden cost center of inference. Long chats and agents are KV-cache-bound, not compute-bound — this is a big slice of why HBM memory, not raw FLOPs, became the scarce resource." },
+  { term: "MHA → GQA → MLA", cat: "attn",
+    plain: "Three generations of attention. Multi-Head (original, big KV cache) → Grouped-Query (heads share K/V, several-fold smaller) → Multi-head Latent (DeepSeek: compress K/V into a small latent, ~10x+ smaller).",
+    investor: "A pure cost-reduction lineage — same quality, shrinking memory per token served. Reading a spec sheet: MLA or sliding-window = lab is optimizing for cheap long-context serving." },
+  { term: "Context window", cat: "attn",
+    plain: "How many tokens the model can consider at once — its working memory. GPT-2: 1k. Llama 4: 1M.",
+    investor: "Long context is what makes agents, codebase analysis, and document work possible — it expands the addressable market, but serving it is memory-hungry, hence all the KV-cache engineering." },
+  { term: "Sliding window attention", cat: "attn",
+    plain: "Most layers only look at the last N tokens (say 1024) instead of everything; a few full layers keep global context. Gemma 3 uses 5 local layers per global one.",
+    investor: "Caps KV-cache growth — a big reason small models now offer 128k context on a single GPU. Enables the on-device tier." },
+  { term: "Sparse / linear attention", cat: "attn",
+    plain: "Newer variants where each token attends to a learned subset of history (sparse: DeepSeek-V3.2) or where memory doesn't grow with context at all (linear: Qwen3-Next).",
+    investor: "Watch this space: DeepSeek's sparse attention funded a >50% API price cut. If linear hybrids hold quality, long-context pricing has much further to fall." },
+  { term: "Pretraining", cat: "train",
+    plain: "The main event: the model reads trillions of tokens of text and learns to predict the next one. Months of GPU time; where almost all the capex goes.",
+    investor: "The line item behind 'training cluster' spending. Scale: Llama 3.1 saw 15T tokens. DeepSeek's claim of a ~$5.6M final run (vs $100M+ assumptions) is what shook infra stocks in Jan 2025." },
+  { term: "Post-training", cat: "train",
+    plain: "Everything after pretraining that turns a raw text-predictor into a useful assistant: SFT, RLHF, RLVR. Far cheaper than pretraining but increasingly where the differentiation lives.",
+    investor: "The moat moved here. Base models are commoditizing; post-training recipes (especially RL for reasoning and agents) are what separates frontier products." },
+  { term: "SFT (supervised fine-tuning)", cat: "train",
+    plain: "Show the model curated example conversations and train it to imitate them. Teaches format and helpfulness.",
+    investor: "Cheap and commoditized — SFT on a strong open base is table stakes, which is why thin 'fine-tuned model' startups struggle to defend margins." },
+  { term: "RLHF", cat: "train",
+    plain: "Reinforcement Learning from Human Feedback: humans rank pairs of model answers, a 'reward model' learns those preferences, and the model is trained to score highly on it.",
+    investor: "The technique behind ChatGPT's usability — and a real data business: human preference data (Scale AI, Surge) became a nine-figure market." },
+  { term: "Reward model", cat: "train",
+    plain: "A separate model trained to predict which answer a human would prefer; used as the automated judge during RLHF.",
+    investor: "A quality bottleneck — models learn to exploit weak reward models ('reward hacking'). Labs' eval and reward infrastructure is invisible but decisive." },
+  { term: "RLVR / GRPO", cat: "train",
+    plain: "RL with Verifiable Rewards: instead of human taste, reward answers that are checkably correct (math checks out, code passes tests). GRPO is DeepSeek's efficient algorithm for it. This is how reasoning models are made.",
+    investor: "The 2025 breakout. Reasoning ability turned out to be an RL recipe on verifiable domains — which is why coding and math agents leapt ahead of everything else, and why 'has verifiable feedback' predicts which industries get disrupted first." },
+  { term: "Reasoning model / test-time compute", cat: "train",
+    plain: "Models trained (via RLVR) to 'think out loud' — generating long hidden chains of thought before answering. Spends more tokens at answer time to buy accuracy.",
+    investor: "Shifts spend from training capex to inference opex: a reasoning answer can burn 10-100x the tokens. Bullish for inference volume — the core of the 'inference is the new training' thesis." },
+  { term: "Distillation", cat: "train",
+    plain: "Train a small model to imitate a big one's outputs. R1's reasoning was distilled into models as small as 1.5B.",
+    investor: "Capability leaks downmarket fast — frontier advantages have a shelf life measured in months. Also the legal/ToS gray zone behind several lab-vs-lab disputes." },
+  { term: "Scaling laws / Chinchilla", cat: "train",
+    plain: "Empirical rules for how quality improves with more params, data, and compute. Chinchilla (2022): most models were undertrained — for a compute budget, use more data on a smaller model.",
+    investor: "The intellectual justification for the capex cycle. Post-Chinchilla, labs 'overtrain' small models on huge data because serving cost, not training cost, dominates lifetime economics — that's why 7-30B models got so good." },
+  { term: "FLOPs", cat: "infer",
+    plain: "Floating-point operations — the raw unit of compute. Rule of thumb: generating one token costs ~2 FLOPs per active parameter.",
+    investor: "The bridge from architecture to hardware demand: tokens/day × active params × 2 ≈ FLOPs needed ≈ GPUs needed. MoE broke naive versions of this math by cutting active params 10-30x." },
+  { term: "Quantization", cat: "infer",
+    plain: "Storing weights in fewer bits (16 → 8 → 4) with minor quality loss. gpt-oss ships at ~4-bit and fits 117B params on one 80GB GPU.",
+    investor: "A free-ish 2-4x cut in memory and often compute. Every quantization advance is more capability per GPU — deflationary for inference, supportive for on-device adoption." },
+  { term: "Memory bandwidth / HBM", cat: "infer",
+    plain: "How fast weights and KV cache move from memory to compute units. Generating tokens one-by-one is usually limited by this, not by raw FLOPs.",
+    investor: "Why HBM supply (SK Hynix, Micron, Samsung) became the choke point of the AI trade, and why MoE (huge memory, modest compute) makes it worse. 'Memory is the new oil' has real architectural roots." },
+  { term: "Batching & serving", cat: "infer",
+    plain: "Providers process many users' requests simultaneously on one GPU, sharing the cost of loading weights. Utilization, not list price, decides margins.",
+    investor: "The gap between raw GPU cost and API price is a batching/utilization game — scale players with steady traffic get structurally better unit economics than niche hosts." },
+  { term: "Open weights vs fully open", cat: "eco",
+    plain: "'Open weights' = you can download and run the numbers (Llama, DeepSeek), but data and code stay private. 'Fully open' = weights + data + code + logs (OLMo). Licenses vary — some restrict big-company use.",
+    investor: "Open weights make a model's economics auditable (every spec on this page) and cap what closed rivals can charge. The strategic release of open models is a competitive weapon — watch who releases what, and why, as signal." },
+];
+
+// --- Concepts / trade-off sections (prose) -------------------
+const CONCEPTS = {
+  anatomy: {
+    title: "Anatomy: what a model actually is",
+    body: "Every model in the index is the same machine: text is chopped into tokens, each token becomes a vector (embedding), and that vector passes through a stack of identical blocks — attention (look at other tokens) then a feed-forward network (process). A final layer turns the result into a probability for every word in the vocabulary; the model samples one, appends it, and repeats. That loop, run billions of times a day, is the product being sold.",
+  },
+  moe: {
+    title: "Dense vs MoE: the trade that defines the cycle",
+    body: "A dense model spends every parameter on every token — quality and cost rise together. MoE breaks the link: keep enormous total capacity (quality) but route each token through a small slice (cost). The catch is memory: all experts must sit in GPU memory even though most sit idle each token. So MoE converts a compute problem into a memory problem — which is precisely why HBM supply became the bottleneck of the hardware trade.",
+    takeaway: "When you see '1T parameters', ask 'how many active?'. Compute cost follows active params; memory cost follows total. The two curves have fully decoupled since 2024.",
+  },
+  serving: {
+    title: "What it costs to serve a token",
+    body: "Two meters run during inference. Compute: ~2 FLOPs per active parameter per generated token. Memory: the whole model must be resident (total params × bytes per param), plus a KV cache that grows with every token of context. Chat is compute-flavored; agents and long documents are memory-flavored. Nearly every architecture choice in the index — GQA, MLA, sliding window, sparse attention, quantization — is an attack on the memory meter.",
+    takeaway: "Inference pricing has a structural downward slope: sparsity cuts the compute meter, attention tricks cut the memory meter, quantization cuts both. Model app-layer margins with input costs falling, and infra demand in tokens × active params, not tokens alone.",
+  },
+  pipeline: {
+    title: "How models are made: the training pipeline",
+    body: "Stage 1 — Pretraining: predict the next token across trillions of tokens; months of cluster time; ~all the capex. Stage 2 — SFT: imitate curated conversations; days; cheap. Stage 3 — Preference tuning (RLHF): optimize against a learned model of human taste. Stage 4 — RLVR: reinforcement learning on checkable tasks (math, code) — the recipe that produced the 2025 reasoning wave, where models spend extra 'thinking' tokens at answer time.",
+    takeaway: "Capex concentrates in stage 1, differentiation in stages 3-4, and RLVR shifts cost into inference (thinking tokens are billed tokens). 'Inference is the new training' is the direct consequence.",
+  },
+};
+
+// Serving-cost helpers
+function computePerToken(m) { return 2 * m.activeB; }   // GFLOPs/token proxy
+function vramFloorGB(m)     { return m.totalB; }        // GB at 8-bit, weights only
+function sparsityPct(m)     { return 100 * m.activeB / m.totalB; }

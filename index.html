@@ -3,28 +3,130 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Model Atlas — LLM architectures for investors</title>
-<link rel="stylesheet" href="styles.css">
+<title>Model Atlas — the field of AI models, read through an investor's lens</title>
+<meta name="description" content="A map of every subfield you need to be competent about AI models: architectures, data, training, inference, agents, evaluation, interpretability, safety, economics and policy, with readings, self-checks and an investor lens.">
+<link rel="stylesheet" href="styles.css?v=20261016b">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 
 <header>
   <div class="brand">
     <h1>MODEL <span class="accent">ATLAS</span></h1>
-    <span class="sub">LLM architectures, Raschka-style — read through an investor's lens</span>
+    <span class="sub">Every subfield you need to be competent about AI models, from linear algebra to export controls, read through an investor's lens</span>
   </div>
-  <nav class="tabs">
-    <button class="active" data-tab="models">Model Index</button>
-    <button data-tab="compare">Compare</button>
-    <button data-tab="concepts">Concepts</button>
-    <button data-tab="glossary">Glossary</button>
+  <nav class="tabs" aria-label="Sections">
+    <div class="navgroup">
+      <span class="navlabel">The field</span>
+      <div class="navlinks">
+        <a href="#map" data-tab="map">Field map</a>
+        <a href="#subfields" data-tab="subfields">Subfields</a>
+        <a href="#tracks" data-tab="tracks">Research tracks</a>
+        <a href="#reading" data-tab="reading">Reading list</a>
+      </div>
+    </div>
+    <div class="navgroup">
+      <span class="navlabel">The models</span>
+      <div class="navlinks">
+        <a href="#models" data-tab="models">Model index</a>
+        <a href="#compare" data-tab="compare">Compare</a>
+        <a href="#concepts" data-tab="concepts">Concepts</a>
+        <a href="#glossary" data-tab="glossary">Glossary</a>
+      </div>
+    </div>
   </nav>
 </header>
 
-<main>
+<main id="main">
+
+  <!-- ================= FIELD MAP ================= -->
+  <section class="tab" id="tab-map">
+    <div class="card map-intro">
+      <h2>The field at a glance</h2>
+      <p class="body">Being competent about AI models means you can read a launch announcement, a paper or a price sheet and know what is being claimed, what it costs and what could go wrong. That takes working literacy in about forty subfields. The map lays them out the way the field is organized: a model's life cycle from data to deployed agent, the architecture at its center, three lenses that study it (evaluation, interpretability, safety), the math and research practice underneath, and the economics and policy around it.</p>
+      <p class="body">Open any subfield for a one-page guide: what it is, the key ideas, why it matters, an investor lens, what competence looks like, a self-check, the canonical reading and a hands-on exercise. Mark your level as you go; it is saved in this browser.</p>
+    </div>
+
+    <div class="card progress-card">
+      <div class="charthead">
+        <h2>Your competence</h2>
+        <span class="note" id="progressSummary"></span>
+      </div>
+      <div class="legend" id="levelLegend"></div>
+      <div class="pbars" id="progressBars"></div>
+    </div>
+
+    <div class="fmap" id="fieldMap"></div>
+
+    <div class="datatools">
+      <span>Your levels, reading checkmarks and notes are stored only in this browser.</span>
+      <button type="button" class="fbtn" data-act="export">Export</button>
+      <button type="button" class="fbtn" data-act="import">Import</button>
+      <button type="button" class="fbtn" data-act="reset">Reset</button>
+    </div>
+  </section>
+
+  <!-- ================= SUBFIELDS ================= -->
+  <section class="tab" id="tab-subfields">
+    <div class="sf-layout">
+      <aside class="sf-side">
+        <label class="sf-select-wrap">
+          <span class="sr-only">Choose a subfield</span>
+          <select id="sfSelect"></select>
+        </label>
+        <nav class="sf-nav" id="sfNav" aria-label="Subfields"></nav>
+      </aside>
+      <article class="sf-main" id="sfMain"></article>
+    </div>
+  </section>
+
+  <!-- ================= RESEARCH TRACKS ================= -->
+  <section class="tab" id="tab-tracks">
+    <div class="card">
+      <h2>Three ways to do AI research</h2>
+      <p class="body">AI research comes in three main versions, and they differ less in subject than in what they demand: math, engineering, compute and domain knowledge. Each card says what the track is, what it takes, your honest odds as a self-taught researcher, and how to start. Below the cards is a realistic path from where you are now.</p>
+    </div>
+    <div class="tracks-grid" id="tracksGrid"></div>
+
+    <div class="card" id="path">
+      <h2>A realistic path</h2>
+      <p class="body">For someone who has already worked through 3Blue1Brown, Karpathy and Raschka. Tick off each step as you finish it.</p>
+      <ol class="path" id="pathList"></ol>
+      <div class="takeaway"><b>The honest caveat.</b> Teaching yourself works for skills, but research also needs feedback from people who will tell you that your result is an artifact of your prompt formatting. Find a community early. Otherwise you can spend six months confidently measuring noise.</div>
+    </div>
+
+    <div class="card" id="communities">
+      <h2>Where to get feedback</h2>
+      <div class="comm-grid" id="commGrid"></div>
+    </div>
+  </section>
+
+  <!-- ================= READING LIST ================= -->
+  <section class="tab" id="tab-reading">
+    <div class="card">
+      <h2>The reading list</h2>
+      <p class="body">The canonical papers, posts, courses and tools for every subfield, with about forty marked <b>essential</b>: the core canon. The suggested habit is one paper a week, noting what was claimed, how it was tested, and what result would have falsified it. Tick items as you read them and open <b>Notes</b> to keep that journal; both are saved in this browser.</p>
+    </div>
+    <div class="filters" id="readFilters">
+      <input type="search" id="readSearch" placeholder="Search title, author, topic…" aria-label="Search the reading list">
+      <select id="readDom" aria-label="Filter by area"></select>
+      <span id="readTypes"></span>
+      <label class="tgl"><input type="checkbox" id="readCore"> Essential only</label>
+      <label class="tgl"><input type="checkbox" id="readUnread"> Unread only</label>
+      <span class="count" id="readCount"></span>
+    </div>
+    <div id="readList"></div>
+
+    <div class="datatools">
+      <span>Your levels, reading checkmarks and notes are stored only in this browser.</span>
+      <button type="button" class="fbtn" data-act="export">Export</button>
+      <button type="button" class="fbtn" data-act="import">Import</button>
+      <button type="button" class="fbtn" data-act="reset">Reset</button>
+    </div>
+  </section>
 
   <!-- ================= MODELS ================= -->
-  <section class="tab active" id="tab-models">
+  <section class="tab" id="tab-models">
 
     <div class="card chart-card">
       <div class="charthead">
@@ -63,8 +165,8 @@
       <p class="body">Pick any two models. Green marks the better number on the cost-relevant rows (lower active params &amp; VRAM, longer context). Try <b>Llama&nbsp;3.1&nbsp;405B vs DeepSeek-V3</b> — the dense-to-MoE handoff in a single screen.</p>
     </div>
     <div class="pickers">
-      <select id="selA"></select>
-      <select id="selB"></select>
+      <select id="selA" aria-label="First model"></select>
+      <select id="selB" aria-label="Second model"></select>
     </div>
     <div class="compare-grid">
       <table class="compare" id="compareTable"></table>
@@ -128,15 +230,8 @@
   <!-- ================= GLOSSARY ================= -->
   <section class="tab" id="tab-glossary">
     <div class="filters">
-      <input type="search" id="glossSearch" placeholder="Search terms…">
-      <span id="glossFilters">
-        <button class="fbtn on" data-cat="all">All</button>
-        <button class="fbtn" data-cat="arch">Architecture</button>
-        <button class="fbtn" data-cat="attn">Attention &amp; memory</button>
-        <button class="fbtn" data-cat="train">Training</button>
-        <button class="fbtn" data-cat="infer">Inference &amp; cost</button>
-        <button class="fbtn" data-cat="eco">Ecosystem</button>
-      </span>
+      <input type="search" id="glossSearch" placeholder="Search terms…" aria-label="Search the glossary">
+      <span id="glossFilters"></span>
       <span class="count" id="glossCount"></span>
     </div>
     <div class="gloss-grid" id="glossGrid"></div>
@@ -145,10 +240,20 @@
 </main>
 
 <footer>
-  Specs from official papers and model cards; closed-model figures marked as rumored/estimated. Compute &amp; memory columns are rules-of-thumb for comparing serving economics, not vendor quotes. Style inspired by Sebastian Raschka's architecture comparisons. Not investment advice.
+  Model specs from official papers and model cards. Compute &amp; memory columns are rules-of-thumb for comparing serving economics, not vendor quotes. Field guide: subfield summaries written for this atlas; reading-list links point to primary sources (arXiv, publishers, project pages). Style inspired by Sebastian Raschka's architecture comparisons. Not investment advice.
 </footer>
 
-<script src="data.js"></script>
-<script src="app.js"></script>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+
+<script src="data.js?v=20261016b"></script>
+<script src="field-a.js?v=20261016b"></script>
+<script src="field-b.js?v=20261016b"></script>
+<script src="field-c.js?v=20261016b"></script>
+<script src="field-d.js?v=20261016b"></script>
+<script src="library.js?v=20261016b"></script>
+<script src="tracks.js?v=20261016b"></script>
+<script src="glossary-plus.js?v=20261016b"></script>
+<script src="app.js?v=20261016b"></script>
+<script src="field-app.js?v=20261016b"></script>
 </body>
 </html>

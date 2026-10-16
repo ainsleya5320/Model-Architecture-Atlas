@@ -20,13 +20,7 @@ const fmtDate = s => {
   return names[m - 1] + " '" + String(y).slice(2);
 };
 
-// ---------------- tabs ----------------
-$$("nav.tabs button").forEach(btn => {
-  btn.addEventListener("click", () => {
-    $$("nav.tabs button").forEach(b => b.classList.toggle("active", b === btn));
-    $$("section.tab").forEach(s => s.classList.toggle("active", s.id === "tab-" + btn.dataset.tab));
-  });
-});
+// Tabs are hash-routed links; the router lives in field-app.js.
 
 // ---------------- tooltip ----------------
 const tip = document.createElement("div");
@@ -412,33 +406,57 @@ function diagramPipeline() {
 }
 
 // ============================================================
-// GLOSSARY
+// GLOSSARY: every term in the field (ALL_GLOSSARY, glossary-plus.js),
+// filtered by domain, each linked to the subfields that use it
 // ============================================================
-const GCATS = { all: "All", arch: "Architecture", attn: "Attention & memory", train: "Training", infer: "Inference & cost", eco: "Ecosystem" };
-const gstate = { search: "", cat: "all" };
+const gstate = { search: "", dom: "all" };
+const DOMAIN_ORDER = Object.fromEntries(DOMAINS.map((d, i) => [d.id, i]));
+const DOMAIN_LABEL = Object.fromEntries(DOMAINS.map(d => [d.id, d.name]));
+const TERM_SUBFIELDS = {};
+SUBFIELDS.forEach(s => (s.terms || []).forEach(t => (TERM_SUBFIELDS[t] = TERM_SUBFIELDS[t] || []).push(s)));
+
+function renderGlossaryFilters() {
+  $("#glossFilters").innerHTML = `<button class="fbtn" data-dom="all">All</button>` +
+    DOMAINS.map(d => `<button class="fbtn" data-dom="${d.id}">${d.short}</button>`).join("");
+  $$("#glossFilters .fbtn").forEach(b => b.addEventListener("click", () => {
+    gstate.dom = b.dataset.dom;
+    syncGlossFilters();
+    renderGlossary();
+  }));
+  syncGlossFilters();
+}
+function syncGlossFilters() {
+  $$("#glossFilters .fbtn").forEach(x => x.classList.toggle("on", x.dataset.dom === gstate.dom));
+}
 
 function renderGlossary() {
-  const q = gstate.search.toLowerCase();
-  const items = GLOSSARY.filter(g =>
-    (gstate.cat === "all" || g.cat === gstate.cat) &&
-    (!q || (g.term + " " + g.plain + " " + g.investor).toLowerCase().includes(q))
-  );
-  $("#glossGrid").innerHTML = items.map(g => `
-    <div class="gcard">
-      <h3>${g.term} <span class="gcat">${GCATS[g.cat]}</span></h3>
+  const q = gstate.search.toLowerCase().trim();
+  const items = ALL_GLOSSARY
+    .map((g, i) => ({ g, i }))
+    .filter(({ g }) => (gstate.dom === "all" || g.dom === gstate.dom) &&
+      (!q || (g.term + " " + g.plain + " " + (g.investor || "")).toLowerCase().includes(q)))
+    .sort((a, b) => (DOMAIN_ORDER[a.g.dom] - DOMAIN_ORDER[b.g.dom]) || (a.i - b.i))
+    .map(x => x.g);
+  if (q) items.sort((a, b) => (b.term.toLowerCase() === q) - (a.term.toLowerCase() === q));
+  const grouped = gstate.dom === "all" && !q;
+  let html = "", lastDom = null;
+  for (const g of items) {
+    if (grouped && g.dom !== lastDom) { html += `<h3 class="gloss-dom">${DOMAIN_LABEL[g.dom]}</h3>`; lastDom = g.dom; }
+    const subs = TERM_SUBFIELDS[g.term] || [];
+    html += `
+    <div class="gcard" data-term="${g.term.replace(/"/g, "&quot;")}">
+      <h3>${g.term} <span class="gcat">${DOMAIN_LABEL[g.dom]}</span></h3>
       <p>${g.plain}</p>
-      <div class="inv-label">Why investors care</div>
-      <p class="inv">${g.investor}</p>
-    </div>`).join("") || `<p style="color:${C.muted}">No terms match.</p>`;
-  $("#glossCount").textContent = items.length + " of " + GLOSSARY.length + " terms";
+      ${g.investor ? `<div class="inv-label">Why investors care</div><p class="inv">${g.investor}</p>` : ""}
+      ${subs.length ? `<div class="g-links">${subs.map(s => `<a href="#subfields/${s.id}">${s.short} →</a>`).join("")}</div>` : ""}
+    </div>`;
+  }
+  $("#glossGrid").innerHTML = html || `<p style="color:${C.muted}">No terms match.</p>`;
+  $("#glossCount").textContent = items.length + " of " + ALL_GLOSSARY.length + " terms";
 }
 
 $("#glossSearch").addEventListener("input", e => { gstate.search = e.target.value; renderGlossary(); });
-$$("#glossFilters .fbtn").forEach(b => b.addEventListener("click", () => {
-  gstate.cat = b.dataset.cat;
-  $$("#glossFilters .fbtn").forEach(x => x.classList.toggle("on", x === b));
-  renderGlossary();
-}));
+renderGlossaryFilters();
 
 // ============================================================
 // CONCEPTS (prose + diagrams injected)

@@ -66,7 +66,7 @@ function renderMap() {
     band("world", inBand("world").map(d => regionHTML(d)).join("")) +
     band("life", lifeHTML, "flow") +
     band("object", inBand("object").map(d => regionHTML(d)).join("") +
-      `<div class="object-links"><a href="#models">Model index →</a><a href="#compare">Compare →</a><a href="#concepts">Concepts →</a></div>`) +
+      `<div class="object-links"><a href="#models">Model index →</a><a href="#closed">Closed frontier →</a><a href="#compare">Compare →</a><a href="#concepts">Concepts →</a></div>`) +
     band("lens", inBand("lens").map(d => regionHTML(d)).join("")) +
     band("ground", inBand("ground").map(d => regionHTML(d)).join(""));
   renderProgress();
@@ -224,6 +224,7 @@ function renderSubfield(id) {
         ${s.builds.length ? `<div class="conn-row"><span class="conn-k">Builds on</span><div class="pills">${s.builds.map(b => pill(SF[b])).join("")}</div></div>` : ""}
         ${leadsTo.length ? `<div class="conn-row"><span class="conn-k">Leads to</span><div class="pills">${leadsTo.map(pill).join("")}</div></div>` : ""}
         <div class="conn-row"><span class="conn-k">Terms</span><div class="pills">${s.terms.map(t => `<a class="termpill" href="#glossary/${encodeURIComponent(t)}">${t}</a>`).join("")}</div></div>
+        ${(() => { const ppl = PEOPLE.filter(p => p.subs.includes(id)); return ppl.length ? `<div class="conn-row"><span class="conn-k">People</span><div class="pills">${ppl.map(p => `<a class="termpill" href="#researchers/${p.id}">${p.name}</a>`).join("")}</div></div>` : ""; })()}
         ${s.atlas ? `<div class="conn-row"><span class="conn-k">In this atlas</span><div class="pills">${s.atlas.map(([h, t]) => `<a class="termpill" href="${h}">${t}</a>`).join("")}</div></div>` : ""}
       </div>
     </section>
@@ -403,11 +404,11 @@ function flash(msg) {
 }
 
 // ============================================================
-// ROUTER — #map, #subfields/<id>, #tracks, #reading, #models,
-// #compare, #concepts, #glossary/<term>
+// ROUTER — #map, #subfields/<id>, #tracks, #reading, #researchers/<id>,
+// #models, #closed/<model>, #compare, #concepts, #glossary/<term>
 // ============================================================
-const TABS = ["map", "subfields", "tracks", "reading", "models", "compare", "concepts", "glossary"];
-const TAB_TITLES = { map: "Field map", subfields: "Subfields", tracks: "Research tracks", reading: "Reading list", models: "Model index", compare: "Compare", concepts: "Concepts", glossary: "Glossary" };
+const TABS = ["map", "subfields", "tracks", "reading", "researchers", "models", "closed", "compare", "concepts", "glossary"];
+const TAB_TITLES = { map: "Field map", subfields: "Subfields", tracks: "Research tracks", reading: "Reading list", researchers: "Researchers", models: "Model index", closed: "Closed frontier", compare: "Compare", concepts: "Concepts", glossary: "Glossary" };
 let lastRoute = "";
 
 function openGlossaryTerm(term) {
@@ -442,9 +443,13 @@ function route(force) {
   else if (tab === "subfields") renderSubfield(SF[arg] ? arg : (currentSf || SUBFIELDS[0].id));
   else if (tab === "tracks") renderTracks();
   else if (tab === "reading") renderReading();
+  else if (tab === "closed") renderClosed();
+  else if (tab === "researchers") renderPeople();
 
   if (changed || force === true) {
     if (tab === "glossary" && arg) openGlossaryTerm(arg);
+    else if (tab === "closed" && arg) openClosedModel(arg);
+    else if (tab === "researchers" && arg) openPerson(arg);
     else if (tab === "tracks" && arg && document.getElementById(arg)) document.getElementById(arg).scrollIntoView();
     else window.scrollTo(0, 0);
   }

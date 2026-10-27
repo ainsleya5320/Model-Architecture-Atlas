@@ -183,7 +183,7 @@ const SUBFIELDS_D = [
     exercise: "Using a GPU rental price and published throughput for an open model, estimate the cost per million output tokens and compare it with the cheapest API price for that model; explain the implied margin.",
     builds: ["i-hardware", "p-scaling"],
     terms: ["FLOPs", "GPU-hour", "Inference gross margin", "Jevons paradox", "Capex"],
-    atlas: [["#concepts", "What it costs to serve a token (Concepts)"], ["#models", "Model index: compute and memory per model"]],
+    atlas: [["#concepts", "What it costs to serve a token (Concepts)"], ["#models", "Model index: compute and memory per model"], ["#closed", "Closed frontier: price, speed and training compute"]],
   },
   {
     id: "g-landscape", dom: "eco", short: "Labs & open weights",
@@ -213,7 +213,7 @@ const SUBFIELDS_D = [
     exercise: "Pick five recent open-weight releases and record each one's license, total and active parameters, context length and cheapest API price; identify which license terms would block a use you have in mind.",
     builds: ["g-econ"],
     terms: ["Open weights vs fully open", "Open-model licenses"],
-    atlas: [["#models", "Model index: the weights column and the closed-model note"]],
+    atlas: [["#models", "Model index: the weights column and the closed-model note"], ["#closed", "Closed frontier: what each lab discloses"]],
   },
   {
     id: "g-policy", dom: "eco", short: "Governance & policy",

@@ -1,0 +1,620 @@
+// ============================================================
+// MODEL ATLAS — Closed frontier data. Every number carries the
+// evidence it rests on: Disclosed (the lab or a named executive said
+// it on the record), Measured (someone outside measured it),
+// Estimated (a stated method with error bars) or Rumored (no
+// checkable method).
+//
+// Sources and snapshot (Oct 22 2026):
+// - Prices and context windows: lab launch posts and pricing pages,
+//   cross-checked against OpenRouter's public model API and Artificial
+//   Analysis. `price` is the launch price; `now` is the list price on
+//   the snapshot date where it differs (used where speed, also measured
+//   that day, is compared).
+// - Output speed: Artificial Analysis, read Oct 22 2026, at each
+//   model's "High" reasoning setting (attribution required).
+// - Training compute: Epoch AI "Data on AI Models" CSV, updated
+//   Oct 19 2026 (CC BY). Ranges: Epoch's own interval where it gives
+//   one, otherwise its confidence label (90% within ±3×/±10×/±31×).
+//   Epoch row errors spotted while building this: Grok 4.7 is
+//   entered as 2.1e9 parameters but its note quotes "2.1T"; GPT-3.5
+//   Turbo's 20B rests on a table its authors withdrew.
+// - Claims: lab posts, model and system cards, the SpaceX S-1/A,
+//   papers and press reports, each linked from its ledger row.
+// ============================================================
+
+const CLOSED_AS_OF = "2026-10-22";
+
+const CLOSED_LABS = {
+  // categorical slots validated on the dark surface (all pairs); the
+  // closest pair (Google/OpenAI) sits in the 6–8 CVD band, so every
+  // mark also gets its own shape and a direct label
+  openai:    { name: "OpenAI",    color: "#008300", shape: "circle" },
+  anthropic: { name: "Anthropic", color: "#d55181", shape: "square" },
+  google:    { name: "Google",    color: "#c98500", shape: "diamond" },
+  xai:       { name: "xAI",       color: "#9085e9", shape: "triangle" },
+};
+
+const TIER_NAMES = { top: "top tier", high: "second tier", mid: "mid tier", small: "small tier" };
+
+const EVIDENCE = [
+  { id: "disclosed", rank: 4, name: "Disclosed", short: "said on the record",
+    def: "The lab said it on the record, or a named executive did (the lab's or a partner's): a price sheet, a model card, a launch post, a regulatory filing, a post on X.",
+    examples: "List prices and context windows; Google's model cards calling Gemini a sparse mixture of experts; SpaceX's IPO filing on xAI's clusters; Musk posting Grok's parameter counts.",
+    trust: "Prices and limits, which customers are billed against. Architecture statements in model cards and filings.",
+    notFor: "Executive asides about size or cost: unaudited, sometimes forward-looking, and rarely clear whether they mean total or active parameters." },
+  { id: "measured", rank: 3, name: "Measured", short: "someone outside measured the live model",
+    def: "A third party measured the model from outside, through its API.",
+    examples: "Output speed and latency from Artificial Analysis; benchmark scores; hidden widths recovered from API outputs.",
+    trust: "Comparing models served at the same moment: what a customer actually gets.",
+    notFor: "Sizing on its own. Speed measures a deployment, which mixes model size with hardware, batch size and decoding tricks." },
+  { id: "estimated", rank: 2, name: "Estimated", short: "a stated method with error bars",
+    def: "An analyst applied a method anyone can check and published the uncertainty.",
+    examples: "Epoch AI's training-compute estimates; parameter estimates from what a model knows, how fast it runs, or what its API leaks.",
+    trust: "Orders of magnitude, and trends across many models estimated the same way.",
+    notFor: "The second significant figure. Read the range, not the point." },
+  { id: "rumored", rank: 1, name: "Rumored", short: "said without a checkable method",
+    def: "Someone said it without a method you can check: a leak, an analyst's sources, a number in a paper that cites a news story.",
+    examples: "SemiAnalysis's 2023 GPT-4 architecture report; the withdrawn \"20B ChatGPT\" figure; the FT's \"industry estimates\" for Fable.",
+    trust: "Leads to test against the other three rungs. Some, like the GPT-4 report, held up well.",
+    notFor: "Anything on its own. Keep track of who has been right before." },
+];
+
+// ------------------------------------------------------------
+// The models. tier: the model's rung in its lab's lineup when it
+// launched. status: current (still the lab's model for that tier),
+// superseded (a newer one exists), retired (no longer served).
+// ladder: label it on the price-ladder chart.
+// ------------------------------------------------------------
+const CLOSED_MODELS = [
+  // ---------------- OpenAI ----------------
+  { id: "gpt-4", name: "GPT-4", short: "GPT-4", lab: "openai", released: "2023-03-14", tier: "top", status: "superseded",
+    price: { in: 30, out: 60 }, priceNote: "the 32k-token version cost double", ctx: 8192, ladder: true,
+    compute: { flop: 2.1e25, conf: "Likely", lo: 8.2e24, hi: 4.4e25, rangeNote: "Epoch's 90% interval",
+      basis: "Built from a reported cluster of about 25,000 A100s; Epoch calls it rough, resting on less public information than most." },
+    position: "The model that set the template for the frontier. OpenAI's technical report withheld its size, hardware and training compute, a policy that still holds for every closed OpenAI model.",
+    read: "The best-documented closed model, and the calibration case. The rumors converged: about 1T in early 2023, 8 × 220B in June, a detailed 1.8T leak in July, then Nvidia's CEO on stage saying \"approximately 1.8 trillion\". The leaked shape (about 280B active parameters, about 13T training tokens) multiplies out to roughly 2×10²⁵ FLOP by the standard 6 × parameters × tokens rule, matching Epoch's hardware-based estimate. Several of these share sources, so the agreement is encouraging rather than proof." },
+  { id: "gpt-4o", name: "GPT-4o", short: "GPT-4o", lab: "openai", released: "2024-05-13", tier: "top", status: "superseded",
+    price: { in: 5, out: 15 }, priceNote: "cut to $2.50 / $10 in August 2024", ctx: 128000,
+    position: "One network trained end to end on text, images and audio, launched at half GPT-4 Turbo's price.",
+    read: "A flagship that got cheaper than its predecessor: the first clear sign that OpenAI was optimizing serving cost, not just capability. Four outside size figures exist, from a 111B floor to 391B, with Epoch's 200B (±2×) in the middle. Agreement within a factor of four is about as good as the outside view gets." },
+  { id: "gpt-4o-mini", name: "GPT-4o mini", short: "GPT-4o mini", lab: "openai", released: "2024-07-18", tier: "small", status: "superseded",
+    price: { in: 0.15, out: 0.6 }, ctx: 128000, ladder: true,
+    position: "OpenAI's small tier, priced below GPT-3.5 Turbo.",
+    read: "The start of the price floor's collapse. Small tiers are where distillation from the big model shows up as margin. The sizes quoted for it run from 8B (a figure its own source cannot vouch for) to 92B (a disputed estimate)." },
+  { id: "o1", name: "o1", short: "o1", lab: "openai", released: "2024-12-05", tier: "top", status: "superseded",
+    price: { in: 15, out: 60 }, ctx: 200000,
+    position: "The first reasoning model in general release: it thinks in hidden tokens before answering.",
+    read: "Price per token understates the cost of a reasoning model, because each answer burns many hidden thinking tokens. From here on, list price and cost per task diverge." },
+  { id: "gpt-4.5", name: "GPT-4.5", short: "GPT-4.5", lab: "openai", released: "2025-02-27", tier: "top", status: "retired",
+    price: { in: 75, out: 150 }, priceNote: "removed from the API on July 14, 2025", ctx: 128000, ladder: true,
+    compute: { flop: 3.8e26, conf: "Likely",
+      basis: "From the training cluster's estimated size, about 187M H100-hours; Epoch's arithmetic gives 2.7–5.4×10²⁶ under its utilization assumptions, and its \"Likely\" label allows ±10×." },
+    position: "The model OpenAI had called Orion internally, described at launch as \"very large and compute-intensive\" and trained on Microsoft Azure AI supercomputers.",
+    read: "The most expensive API model on record, removed from the API within five months, with OpenAI pointing developers to the cheaper GPT-4.1. A clean lesson: scaling pretraining alone produced a model too costly to serve at a price customers would pay." },
+  { id: "gpt-5", name: "GPT-5", short: "GPT-5", lab: "openai", released: "2025-08-07", tier: "top", status: "superseded",
+    price: { in: 1.25, out: 10 }, ctx: 400000, ladder: true,
+    compute: { flop: 6.6e25, conf: "Speculative", lo: 2e25, hi: 2e26, rangeNote: "Epoch's stated interval",
+      basis: "Epoch calls this one fairly speculative; a later Epoch note puts its best guess near 5×10²⁵." },
+    position: "Not one model but a system: a fast model, a \"thinking\" model and a real-time router that picks between them.",
+    read: "Cheaper than GPT-4o and, by Epoch's estimates, trained on less compute than GPT-4.5: a \"mid-sized\" model with about 100B active parameters. Epoch's reading is that OpenAI found scaling post-training, the reinforcement learning behind reasoning, a better buy than a bigger pretraining run. Because GPT-5 is a routed system, any size estimate describes whichever model answered." },
+  { id: "gpt-5.5", name: "GPT-5.5", short: "GPT-5.5", lab: "openai", released: "2026-04-23", tier: "top", status: "superseded",
+    price: { in: 5, out: 30 }, ctx: 1050000,
+    position: "OpenAI's flagship for professional work, co-designed for, trained with and served on Nvidia GB200 and GB300 NVL72 systems.",
+    read: "Flagship pricing quadrupled on input versus GPT-5, and OpenAI hinted it is a bigger model that serves as fast as GPT-5.4. Press reports say it came from a new pretraining run, codenamed Spud. It is also the cautionary tale for size estimates: one method read it at 9.7T, then 1.5T after a replication, then 4.7T in the paper's revision." },
+  { id: "gpt-5.6-sol", name: "GPT-5.6 Sol", short: "5.6 Sol", lab: "openai", released: "2026-07-09", tier: "top", status: "superseded",
+    price: { in: 5, out: 30 }, now: { in: 4, out: 20 }, priceNote: "cut by more than 20% for three months from August 21", ctx: 1050000,
+    position: "The flagship of the GPT-5.6 series. OpenAI describes Sol, Terra and Luna as \"three model sizes\". Previewed on June 26 to a small group of partners at the U.S. government's request; generally available July 9.",
+    read: "Nothing about its size is public beyond \"three model sizes\". At launch, Sol cost 2× Terra and 5× Luna on input; those ratios are the best hint at how differently sized the three are. OpenAI cut all three prices within six weeks of launch. It also serves Sol on Cerebras chips at up to 750 tokens a second for select customers, a reminder that speed says as much about hardware as about size." },
+  { id: "gpt-5.6-terra", name: "GPT-5.6 Terra", short: "5.6 Terra", lab: "openai", released: "2026-07-09", tier: "mid", status: "superseded",
+    price: { in: 2.5, out: 15 }, now: { in: 2, out: 12 }, priceNote: "cut 20% on July 30", ctx: 1050000, speed: { tps: 103.2, effort: "High" },
+    position: "The middle of GPT-5.6's three model sizes, pitched as GPT-5.5-class at about half the cost.",
+    read: "At today's price, about twice GPT-6 Astra's speed at under a quarter of its price: a mid-sized model by both signals." },
+  { id: "gpt-5.6-luna", name: "GPT-5.6 Luna", short: "5.6 Luna", lab: "openai", released: "2026-07-09", tier: "small", status: "superseded",
+    price: { in: 1, out: 6 }, now: { in: 0.2, out: 1.2 }, priceNote: "cut 80% on July 30", ctx: 1050000,
+    position: "The smallest of GPT-5.6's three model sizes: the fast, cheap tier.",
+    read: "An 80% cut three weeks after launch is a market signal, not a cost signal: the small tier is where price wars happen, and it carries most of the token volume that industry trackers count." },
+  { id: "gpt-6-astra", name: "GPT-6 Astra", short: "GPT-6 Astra", lab: "openai", released: "2026-09-03", tier: "top", status: "current",
+    price: { in: 10, out: 50 }, ctx: 1050000, speed: { tps: 49.4, effort: "High" }, ladder: true,
+    compute: { flop: 9.4e26, conf: "Likely", lo: 5e26, hi: 2e27, rangeNote: "Epoch's stated interval",
+      basis: "At least 100,000 GB200s in Abilene, Texas, for about 90 days at about 25% utilization in FP8." },
+    position: "The flagship of the GPT-6 series, which OpenAI calls \"the world's most intelligent and aligned model\", released in stages. A \"fast mode\" doubles speed at double the price.",
+    read: "The largest training run with a public estimate, roughly 2.5× GPT-4.5's, and priced to match: $10 / $50, with the slowest measured speed in the lineup. Three OpenAI and Nvidia executives said it was OpenAI's first pretraining run on more than 100,000 GPUs, at the Stargate site in Texas. All the signals point the same way, and they tie a model launch to a data-center milestone you can track." },
+  { id: "gpt-6.1-sol", name: "GPT-6.1 Sol", short: "6.1 Sol", lab: "openai", released: "2026-09-29", tier: "high", status: "current",
+    price: { in: 2, out: 10 }, ctx: 1050000, speed: { tps: 50.7, effort: "High" },
+    position: "The second tier of the GPT-6 series, sold as matching Astra on agentic coding \"at one-fifth of Astra's standard input and output token prices\".",
+    read: "The signals disagree: Astra-like speed at a fifth of Astra's price. Either Sol is large and priced to win share, or it runs on slower, cheaper hardware with heavier batching. OpenAI says a faster \"Ultrafast\" variant is coming. Watch whether the price holds." },
+  { id: "gpt-6-luna", name: "GPT-6 Luna", short: "GPT-6 Luna", lab: "openai", released: "2026-09-22", tier: "small", status: "current",
+    price: { in: 0.1, out: 0.5 }, ctx: 1050000, speed: { tps: 116.4, effort: "High" }, ladder: true,
+    position: "The fast, cheap tier of the GPT-6 series, \"trained with similar methods as GPT-6 Astra\".",
+    read: "A tenth of GPT-5.6 Luna's launch price ten weeks later, and the same price point as Claude Haiku 5.5 to the cent: the small tier is a price war." },
+
+  // ---------------- Anthropic ----------------
+  { id: "claude-3-opus", name: "Claude 3 Opus", short: "Claude 3 Opus", lab: "anthropic", released: "2024-03-04", tier: "top", status: "superseded",
+    price: { in: 15, out: 75 }, ctx: 200000, ladder: true,
+    position: "Anthropic's first Opus: the top of a three-tier family (Haiku, Sonnet, Opus), trained on Amazon and Google cloud hardware.",
+    read: "Set Anthropic's premium price point, $15 / $75, which held until Opus 4.5 in November 2025." },
+  { id: "claude-3.5-sonnet", name: "Claude 3.5 Sonnet", short: "3.5 Sonnet", lab: "anthropic", released: "2024-06-20", tier: "mid", status: "superseded",
+    price: { in: 3, out: 15 }, ctx: 200000,
+    compute: { flop: 2.7e25, conf: "Speculative",
+      basis: "Converted from Dario Amodei's remark that it cost \"a few $10M's to train\", using GPU rental prices." },
+    position: "A mid-tier model that outperformed the larger Claude 3 Opus.",
+    read: "The rare case where a lab's CEO described a closed model's scale: \"mid-sized\", tens of millions of dollars to train. Outside guesses range from 175B (copied from blogs) to about 400B (Epoch, from speed and price). A mid-sized model beating the previous flagship is the pattern behind most later price cuts." },
+  { id: "claude-3.7-sonnet", name: "Claude 3.7 Sonnet", short: "3.7 Sonnet", lab: "anthropic", released: "2025-02-24", tier: "mid", status: "superseded",
+    price: { in: 3, out: 15 }, ctx: 200000,
+    compute: { flop: 3.35e25, conf: "Likely", lo: 1e25, hi: 1e26, rangeNote: "Epoch's stated interval",
+      basis: "Epoch's spreadsheet estimate, consistent with Anthropic's reported remark that it was not a 10²⁶ FLOP model." },
+    position: "Anthropic's first model with a visible extended-thinking mode.",
+    read: "The last Claude with a published compute estimate. Since then, the outside view of Anthropic rests on price, speed and partners' disclosures about its compute deals." },
+  { id: "claude-opus-4.1", name: "Claude Opus 4.1", short: "Opus 4.1", lab: "anthropic", released: "2025-08-05", tier: "top", status: "superseded",
+    price: { in: 15, out: 75 }, ctx: 200000,
+    position: "The last Opus at the original $15 / $75.",
+    read: "Kept Claude 3 Opus's price for a far more capable model. Price per token flat, capability up: that is how deflation shows up at the top." },
+  { id: "claude-opus-4.5", name: "Claude Opus 4.5", short: "Opus 4.5", lab: "anthropic", released: "2025-11-24", tier: "top", status: "superseded",
+    price: { in: 5, out: 25 }, priceNote: "a two-thirds cut from Opus 4.1", ctx: 200000,
+    position: "The Opus that cut the tier's price by two-thirds.",
+    read: "A two-thirds cut at the top tier usually means a smaller or sparser model, or much better serving efficiency, rather than charity. Speed readings from the time would tell which; this snapshot has none." },
+  { id: "claude-fable-5", name: "Claude Fable 5", short: "Fable 5", lab: "anthropic", released: "2026-06-09", tier: "top", status: "superseded",
+    price: { in: 10, out: 50 }, ctx: 1000000,
+    position: "The first generally available \"Mythos-class\" model, a tier Anthropic defines as sitting above Opus in capability. Anthropic says it is the same underlying model as Claude Mythos 5, which partners get with some safeguards lifted; flagged cyber, bio and distillation requests fall back to Opus 4.8, in under 5% of sessions.",
+    read: "Anthropic's answer to the ceiling question: rather than raise Opus's price, it added a tier above it at twice the price. Three days after launch, U.S. export controls suspended it for nearly three weeks, a new kind of revenue risk at the top tier. Size: nothing disclosed. A leaked draft called the tier \"larger\" than Opus; the FT cited ~5T \"industry estimates\"; a disputed knowledge-probe method reads about 3.5T (1.1T–11.2T). All three point the same way, to a model larger than Opus, and none is checkable." },
+  { id: "claude-opus-5", name: "Claude Opus 5", short: "Opus 5", lab: "anthropic", released: "2026-07-24", tier: "high", status: "superseded",
+    price: { in: 5, out: 25 }, ctx: 1000000,
+    position: "Opus, now the second tier beneath Fable, sold as coming \"close to the frontier intelligence of Claude Fable 5 at half the price\".",
+    read: "Same price as Opus 4.5. With Fable above it, Opus has become the workhorse premium tier." },
+  { id: "claude-fable-5.1", name: "Claude Fable 5.1", short: "Fable 5.1", lab: "anthropic", released: "2026-09-01", tier: "top", status: "current",
+    price: { in: 10, out: 50 }, priceNote: "cached input 75% cheaper than Fable 5's", ctx: 1000000, speed: { tps: 55.4, effort: "High" }, ladder: true,
+    position: "The update to Fable 5, again the same model as its Mythos twin (Mythos 5.1) with different safeguards, with a June 2026 knowledge cutoff.",
+    read: "Tied with GPT-6 Astra for the highest price, and among the slowest speeds measured: both outside signals put it in the largest class of models being served. Its June 2026 knowledge cutoff matches Opus 5.5, Sonnet 5.5 and Haiku 5.5, a hint, not proof, that the autumn lineup shares fresh training data. No size estimate covers Fable 5.1 itself, and Anthropic discloses no size, compute or hardware." },
+  { id: "claude-opus-5.5", name: "Claude Opus 5.5", short: "Opus 5.5", lab: "anthropic", released: "2026-09-22", tier: "high", status: "current",
+    price: { in: 4, out: 20 }, ctx: 1000000, speed: { tps: 78.1, effort: "High" },
+    position: "The second tier beneath Fable. Anthropic says it \"requires less compute to serve than Opus 5\" and generates output more than 30% faster.",
+    read: "A rare disclosed cost signal: Anthropic says outright that Opus 5.5 is cheaper to serve, and the price cut follows. At 40% of Fable's price and about 40% more speed, it is consistent with a meaningfully smaller model than Fable." },
+  { id: "claude-sonnet-5.5", name: "Claude Sonnet 5.5", short: "Sonnet 5.5", lab: "anthropic", released: "2026-09-28", tier: "mid", status: "current",
+    price: { in: 2, out: 10 }, ctx: 1000000, speed: { tps: 104.0, effort: "High" },
+    position: "The everyday mid tier.",
+    read: "Same price as GPT-6.1 Sol but twice as fast, which is the comparison that makes Sol's pricing look unusual." },
+  { id: "claude-haiku-5.5", name: "Claude Haiku 5.5", short: "Haiku 5.5", lab: "anthropic", released: "2026-10-07", tier: "small", status: "current",
+    price: { in: 0.1, out: 0.5 }, ctx: 1000000, speed: { tps: 172.7, effort: "High" }, ladder: true,
+    position: "The small, fast tier for high-volume work and sub-agents.",
+    read: "One-tenth of Haiku 4.5's input price a year earlier, matching GPT-6 Luna to the cent. Sub-agent workloads multiply token counts, so this tier drives volume." },
+
+  // ---------------- Google ----------------
+  { id: "gemini-1-ultra", name: "Gemini 1.0 Ultra", short: "Gemini Ultra", lab: "google", released: "2023-12-06", tier: "top", status: "superseded",
+    price: null, priceNote: "no public per-token price was published", ctx: 32768,
+    compute: { flop: 5e25, conf: "Speculative",
+      basis: "From benchmark comparisons and a guessed TPU v4 setup of about 57,000 chips." },
+    position: "Google's first Gemini flagship, trained on \"a large fleet of TPUv4 accelerators\".",
+    read: "The only Gemini with a published compute estimate. Every later Gemini is a blank on that rung." },
+  { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", short: "2.5 Pro", lab: "google", released: "2025-03-25", tier: "top", status: "superseded",
+    price: { in: 1.25, out: 10 }, priceNote: "prompts up to 200k tokens; longer prompts cost more", ctx: 1048576,
+    position: "A sparse mixture-of-experts model, per Google's technical report, and the first Gemini family trained on TPUv5p.",
+    read: "Set the flagship price point that OpenAI matched to the cent five months later with GPT-5. Google serves Gemini on its own TPUs, widely thought to give it a serving-cost edge over labs renting Nvidia GPUs." },
+  { id: "gemini-3-pro", name: "Gemini 3 Pro", short: "3 Pro", lab: "google", released: "2025-11-18", tier: "top", status: "superseded",
+    price: { in: 2, out: 12 }, priceNote: "prompts up to 200k tokens", ctx: 1048576,
+    position: "A sparse mixture-of-experts model trained on TPUs, per its model card, and the base for every later Gemini 3 model.",
+    read: "A 60% input-price increase over 2.5 Pro: Google raising the price of its top tier once it led benchmarks. Its model card also says every subsequent Gemini 3 model is based on it, so one pretraining run fed a year of releases." },
+  { id: "gemini-3.1-pro", name: "Gemini 3.1 Pro", short: "3.1 Pro", lab: "google", released: "2026-02-19", tier: "top", status: "superseded",
+    price: { in: 2, out: 12 }, ctx: 1048576, speed: { tps: 131.6, effort: "default" },
+    position: "\"Based on Gemini 3 Pro\", per its model card: a post-training update, not a new base model.",
+    read: "Fast for a flagship-priced model. TPU serving and Google's scale make speed a weak size signal for Gemini." },
+  { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash", short: "3.8 Flash", lab: "google", released: "2026-09-02", tier: "mid", status: "current",
+    price: { in: 0.75, out: 3.75 }, ctx: 1048576, speed: { tps: 138.5, effort: "High" },
+    position: "The most capable Flash model, Google's high-volume tier, built on 3.7 Flash and ultimately on the Gemini 3 base.",
+    read: "The fourth Flash in under four months, each built on the previous one and ultimately on the Gemini 3 base, per Google's model cards. That is cheap iteration: new capability without a new pretraining bill." },
+  { id: "gemini-4-argon", name: "Gemini 4 Argon", short: "Gemini 4 Argon", lab: "google", released: "2026-09-30", tier: "top", status: "current",
+    price: { in: 2, out: 10 }, priceNote: "introductory; Google says it will rise to $4 / $20", ctx: 1048576, speed: { tps: 80.6, effort: "High" }, ladder: true,
+    position: "Google's new flagship: a \"large scale sparse mixture-of-experts\" model that is \"not a modification or a fine-tune of a prior model\", with a March 2026 cutoff. Released first to cyber defenders on September 30, more widely in October.",
+    read: "The first new Gemini pretraining run since Gemini 3, and \"larger in size\" than the Pro line, according to a Google spokesperson. A fifth of Fable's and Astra's price at about 1.5× their speed. Even at the announced $4 / $20, it would cost under half as much as either. Either it is smaller, or TPUs let Google charge less for the same size. The outside view cannot separate the two." },
+
+  // ---------------- xAI ----------------
+  { id: "grok-2", name: "Grok 2", short: "Grok 2", lab: "xai", released: "2024-08-13", tier: "top", status: "superseded",
+    price: null, priceNote: "API pricing changed several times; not shown", ctx: 131072,
+    compute: { flop: 2.96e25, conf: "Confident",
+      basis: "From xAI's statements comparing Grok 2's compute with GPT-4's and Grok 3's." },
+    position: "xAI's first frontier-class model, trained on about 20,000 H100s per Musk. Its weights were released in August 2025.",
+    read: "xAI states its compute plainly and has released this model's weights, which makes it the easiest closed-era model to check." },
+  { id: "grok-3", name: "Grok 3", short: "Grok 3", lab: "xai", released: "2025-02-17", tier: "top", status: "superseded",
+    price: { in: 3, out: 15 }, ctx: 131072,
+    compute: { flop: 3.5e26, conf: "Likely", lo: 2.1e26, hi: 1.13e27, rangeNote: "Epoch's stated interval",
+      basis: "A cluster of about 80,000 H100s, per xAI's site, for roughly three months." },
+    position: "Trained on Colossus in Memphis with \"10x the compute of previous state-of-the-art models\", per xAI.",
+    read: "More than ten times Grok 2's compute. SpaceX's IPO filing says the first Colossus cluster, about 100,000 H100s, came online in 122 days: cluster build speed became a competitive variable. Musk later said Grok 3 and 4 sit on a 3T-parameter base. Its weights, promised for early 2026, have not appeared." },
+  { id: "grok-4", name: "Grok 4", short: "Grok 4", lab: "xai", released: "2025-07-09", tier: "top", status: "superseded",
+    price: { in: 3, out: 15 }, ctx: 256000,
+    compute: { flop: 5e26, conf: "Speculative",
+      basis: "Assumes Grok 3's pretraining plus a large reinforcement-learning phase, as a launch slide implied." },
+    position: "Grok 3's base with reinforcement learning run \"at pretraining scale\" on a 200,000-GPU Colossus, per xAI.",
+    read: "The clearest public case of reinforcement learning taking a share of training compute comparable to pretraining." },
+  { id: "grok-4.20", name: "Grok 4.20", short: "Grok 4.20", lab: "xai", released: "2026-02-17", tier: "top", status: "superseded",
+    price: { in: 2, out: 6 }, priceNote: "API price at its March release; cut to $1.25 / $2.50 in April", ctx: 2000000,
+    position: "Built on what Musk called xAI's \"V8 small foundation model\".",
+    read: "A rare stated parameter count, and a small one: 500B, described as the small base, which a knowledge-probe estimate (about 689B) roughly supports. If Musk's November 2025 remark that Grok 3 and 4 sit on a 3T base is also right, xAI restarted from a much smaller base in 2026 and has been growing it since. Note the output price, $6 against rivals' $10 to $50." },
+  { id: "grok-4.6", name: "Grok 4.6", short: "Grok 4.6", lab: "xai", released: "2026-08-12", tier: "top", status: "superseded",
+    price: { in: 2, out: 6 }, ctx: 500000,
+    position: "A 1.5-trillion-parameter model, per Musk; per xAI, Grok 4.5 with a longer supplemental training run.",
+    read: "Three times the 4.20 base by stated size, at the same price. If the 1.5T figure is total parameters in a sparse model, the active count could be a few percent of it." },
+  { id: "grok-4.7", name: "Grok 4.7", short: "Grok 4.7", lab: "xai", released: "2026-09-21", tier: "top", status: "current",
+    price: { in: 2, out: 6 }, ctx: 500000, speed: { tps: 81.8, effort: "High" }, ladder: true,
+    position: "xAI's flagship, on \"a new, larger base model\" per xAI, described in advance by Musk as \"the 2.1T model\".",
+    read: "The only current frontier model with a stated parameter count, and xAI's own post confirms the direction (a larger base). 2.1T total parameters at about Opus 5.5's speed suggests a sparse model with a modest active share, served cheaply: $2 / $6. Musk says a 2.5T Grok 4.8 is next." },
+];
+
+// Open-weight models whose numbers are known, used as rulers on the charts.
+const SPEED_ANCHORS = [
+  { id: "gpt-oss-120b", name: "gpt-oss-120b", short: "gpt-oss-120b (open)", labName: "OpenAI, open weights", released: "2025-08-05",
+    price: { in: 0.15, out: 0.6 }, speed: { tps: 216.7 }, known: "117B total, 5.1B active" },
+];
+const COMPUTE_ANCHORS = [
+  { id: "llama31-405b-c", name: "Llama 3.1 405B", short: "Llama 3.1 405B", labName: "Meta, open weights", released: "2024-07-23", flop: 3.8e25, known: "405B dense; compute reported by Meta" },
+  { id: "deepseek-v3-c", name: "DeepSeek-V3", short: "DeepSeek-V3", labName: "DeepSeek, open weights", released: "2024-12-26", flop: 3.3e24, known: "671B MoE, 37B active; GPU-hours reported" },
+  { id: "kimi-k2-c", name: "Kimi K2", short: "Kimi K2", labName: "Moonshot, open weights", released: "2025-07-11", flop: 2.98e24, known: "1T MoE, 32B active" },
+  { id: "gpt-oss-120b-c", name: "gpt-oss-120b", short: "gpt-oss-120b", labName: "OpenAI, open weights", released: "2025-08-05", flop: 4.94e24, known: "117B MoE; 2.1M H100-hours reported" },
+];
+
+// ------------------------------------------------------------
+// Claims ledger. tier: which rung the claim sits on. size: short
+// form for the table's size column (point estimates of parameters
+// only; bounds stay in the text). status: confirmed (official or
+// checkable: a model card, a filing, released weights) |
+// corroborated (independent sources agree) | unverified | contested |
+// superseded | retracted. lab: for claims about models not in the
+// table. ledger:false keeps a cross-reference out of the ledger.
+// ------------------------------------------------------------
+
+// Knowledge-probe (IKP) estimates: Bojie Li, arXiv 2604.24827 v2 (Jul 5
+// 2026). Accuracy on 1,400 obscure-fact questions, mapped to
+// "open-model-equivalent" parameters by a fit on 93 open models
+// (R² 0.91); 90% bands about ±3.2×. Rows not printed in the paper's
+// table come from its released data file. All marked contested: a
+// published replication found a scoring bug and calls the method
+// unreliable for closed models (see the GPT-5.5 rows).
+const IKP_URL = "https://arxiv.org/abs/2604.24827v2";
+const IKP_DATA = "https://01.me/research/ikp/data/calibration.json";
+const ikp = (model, est, band, { fromData = false, note = "", ledger = false } = {}) => ({
+  model, date: "2026-07-05", tier: "estimated", size: "≈" + est, status: "contested", ledger,
+  text: `Knowledge-probe estimate: ≈${est} open-model-equivalent parameters, 90% band ${band}.${note ? " " + note : ""}`,
+  source: fromData ? "IKP paper, data file" : "IKP paper, v2", url: fromData ? IKP_DATA : IKP_URL });
+
+const ERDIL_URL = "https://epoch.ai/gradient-updates/frontier-language-models-have-become-much-smaller";
+const MEDEC_URL = "https://arxiv.org/abs/2412.19260v2";
+const S1A_URL = "https://www.sec.gov/Archives/edgar/data/1181412/000162828026040364/spaceexplorationtechnologib.htm";
+const ASTRA_FORTUNE = "https://fortune.com/2026/09/03/openai-debuts-gpt-6-astra-computer-use-greg-brockman-says-start-of-agi/";
+const FABLE5_URL = "https://www.anthropic.com/news/claude-fable-5-mythos-5";
+const FT_FABLE_URL = "https://www.thestandard.com.hk/innovation/article/339310/ByteDance-targets-mega-AI-model-that-could-match-Mythos-scale-FT-reports";
+const MUSK_BARON = "https://lifearchitect.ai/grok/";
+
+const CLOSED_CLAIMS = [
+  // ================= OpenAI =================
+  // ---- GPT-4: how a rumor converged ----
+  { model: "gpt-4", date: "2023-03-24", tier: "rumored",
+    text: "\"GPT-4 has 1 trillion parameters\", reported before any architecture leak; later figures converged on about 1.8T.",
+    source: "Semafor", url: "https://www.semafor.com/article/03/24/2023/the-secret-history-of-elon-musk-sam-altman-and-openai", status: "superseded" },
+  { model: "gpt-4", date: "2023-04-17", tier: "disclosed",
+    text: "Asked whether training GPT-4 cost $100 million, Sam Altman replied: \"It's more than that.\"",
+    source: "Sam Altman, via WIRED", url: "https://www.wired.com/story/openai-ceo-sam-altman-the-age-of-giant-ai-models-is-already-over/", status: "unverified" },
+  { model: "gpt-4", date: "2023-06-20", tier: "rumored", size: "≈1.76T",
+    text: "\"220 billion in each head\" in an eight-way mixture, about 1.76T in total. The mixture structure was later echoed; the expert count was not.",
+    source: "George Hotz, Latent Space podcast", url: "https://www.latent.space/p/geohot", status: "unverified" },
+  { model: "gpt-4", date: "2023-07-10", tier: "rumored", size: "≈1.8T total, ≈280B active",
+    text: "About 1.8 trillion parameters in a 16-expert mixture, roughly 280B active per token, trained on about 13T tokens.",
+    source: "SemiAnalysis", url: "https://newsletter.semianalysis.com/p/gpt-4-architecture-infrastructure", status: "corroborated" },
+  { model: "gpt-4", date: "2024-03-18", tier: "disclosed", size: "≈1.8T",
+    text: "On stage at GTC: \"the state-of-the-art OpenAI model is approximately 1.8 trillion parameters\". He did not name the model, and OpenAI has never confirmed it.",
+    source: "Jensen Huang (Nvidia CEO), GTC keynote", url: "https://www.youtube.com/watch?v=Y2F8yisiS6E&t=1245s", status: "corroborated" },
+  ikp("gpt-4", "621B", "194B–2.0T", { fromData: true, note: "The rumored 1.8T sits at the top of the band." }),
+
+  // ---- the GPT-3.5 era: what an API leaks ----
+  { model: null, modelName: "GPT-3.5 Turbo", lab: "openai", date: "2023-10-26", tier: "rumored",
+    text: "\"20B parameters\" for ChatGPT's model, in a table of Microsoft's CodeFusion paper. Withdrawn within days: the authors called it \"inappropriately sourced conjecture\" taken from a news article. Epoch's database still lists 20B.",
+    source: "CodeFusion paper (arXiv)", url: "https://arxiv.org/abs/2310.17680v3", status: "retracted" },
+  { model: null, modelName: "OpenAI ada, babbage", lab: "openai", date: "2024-03-11", tier: "measured",
+    text: "Recovered the exact hidden width of two production models through the API (1,024 and 2,048), confirmed by OpenAI. The authors also recovered gpt-3.5-turbo's width but withheld it at OpenAI's request.",
+    source: "Carlini et al. (arXiv)", url: "https://arxiv.org/abs/2403.06634", status: "confirmed" },
+  { model: null, modelName: "GPT-3.5 Turbo", lab: "openai", date: "2024-03-14", tier: "estimated",
+    text: "Hidden width of about 4,096, read from the API's output probabilities. Known models that wide have about 7B parameters, more if it is a mixture of experts.",
+    source: "Finlayson et al. (arXiv)", url: "https://arxiv.org/abs/2403.09539", status: "unverified" },
+
+  // ---- 2024: three methods and a rumor mill ----
+  { model: "gpt-4o", date: "2024-08-08", tier: "disclosed", ledger: false,
+    text: "\"Trained end-to-end across text, vision, and audio\": one network for all three, not a pipeline. No size given.",
+    source: "OpenAI, GPT-4o system card", url: "https://openai.com/index/gpt-4o-system-card/", status: "confirmed" },
+  { model: "gpt-4o", date: "2024-12-13", tier: "estimated", size: "≈200B",
+    text: "About 200B total parameters, inferred from its serving speed (100–150 tokens a second) and price; \"could easily be off by a factor of 2\".",
+    source: "Ege Erdil, Epoch AI", url: ERDIL_URL, status: "unverified" },
+  { model: "claude-3.5-sonnet", date: "2024-12-13", tier: "estimated", size: "≈400B",
+    text: "\"A guess of around 400 billion parameters\", from its speed (about 60 tokens a second) and price; the author calls it speculative.",
+    source: "Ege Erdil, Epoch AI", url: ERDIL_URL, status: "unverified" },
+  { model: "claude-3.5-sonnet", date: "2024-12-11", tier: "rumored",
+    text: "Anthropic trained Claude 3.5 Opus and used it internally to generate data for, and grade, the new 3.5 Sonnet. Dario Amodei later denied it: 3.5 Sonnet \"was not trained in any way that involved a larger or more expensive model\".",
+    source: "SemiAnalysis", url: "https://newsletter.semianalysis.com/p/scaling-laws-o1-pro-architecture-reasoning-training-infrastructure-orion-and-claude-3-5-opus-failures", status: "contested" },
+  { model: null, modelName: "GPT-4o, 4o mini, o1, Claude 3.5 Sonnet", labs: ["openai", "anthropic"], date: "2024-12-26", tier: "rumored",
+    text: "A Microsoft-led medical-benchmark paper listed GPT-4o at 200B, GPT-4o mini at 8B, o1-preview at 300B and Claude 3.5 Sonnet at 175B. Its revision added that the sizes were \"mined from public articles only\" and that the authors \"cannot vouch for\" them. They are still quoted as if measured.",
+    source: "MEDEC paper (arXiv)", url: MEDEC_URL, status: "unverified" },
+  { model: "gpt-4o", date: "2024-12-26", tier: "rumored", size: "200B", ledger: false,
+    text: "200B, from the MEDEC paper's list, which its authors say was mined from public articles they cannot vouch for.",
+    source: "MEDEC paper (arXiv)", url: MEDEC_URL, status: "unverified" },
+  { model: "gpt-4o-mini", date: "2024-12-26", tier: "rumored", size: "8B", ledger: false,
+    text: "8B, from the MEDEC paper's list, which its authors say was mined from public articles they cannot vouch for.",
+    source: "MEDEC paper (arXiv)", url: MEDEC_URL, status: "unverified" },
+  { model: "o1", date: "2024-12-26", tier: "rumored", ledger: false,
+    text: "300B for o1-preview and 100B for o1-mini, from the MEDEC paper's list, which its authors say was mined from public articles.",
+    source: "MEDEC paper (arXiv)", url: MEDEC_URL, status: "unverified" },
+  { model: "claude-3.5-sonnet", date: "2024-12-26", tier: "rumored", size: "175B", ledger: false,
+    text: "175B, from the MEDEC paper's list, which its authors say was mined from public articles they cannot vouch for.",
+    source: "MEDEC paper (arXiv)", url: MEDEC_URL, status: "unverified" },
+  ikp("gpt-4o", "391B", "122B–1.25T", { fromData: true }),
+  ikp("gpt-4o-mini", "92B", "29B–295B", { fromData: true, note: "More than ten times the 8B figure that circulates." }),
+  ikp("o1", "1.3T", "405B–4.1T", { fromData: true, note: "Tested with reasoning on." }),
+  { model: "gpt-4o", date: "2026-06-05", tier: "estimated",
+    text: "At least 111B parameters: a lower bound from how well it continues famous texts word for word, calibrated on open models of known size.",
+    source: "Nikolic (arXiv)", url: "https://arxiv.org/abs/2605.29223v3", status: "unverified" },
+  { model: "claude-3.5-sonnet", date: "2025-01-29", tier: "disclosed",
+    text: "\"A mid-sized model that cost a few $10M's to train\", not trained with help from a larger model.",
+    source: "Dario Amodei, essay", url: "https://darioamodei.com/on-deepseek-and-export-controls", status: "unverified" },
+
+  // ---- GPT-4.5 and GPT-5: a big run, then a smaller one ----
+  { model: "gpt-4.5", date: "2024-12-20", tier: "rumored",
+    text: "A six-month training run of \"Orion\", the model that shipped as GPT-4.5, could cost about $500M in compute alone, by the Wall Street Journal's estimate.",
+    source: "Wall Street Journal", url: "https://www.wsj.com/tech/ai/openai-gpt5-orion-delays-639e7693", status: "unverified" },
+  { model: "gpt-4.5", date: "2025-02-27", tier: "disclosed",
+    text: "\"A very large and compute-intensive model\", trained on Microsoft Azure AI supercomputers. No size given.",
+    source: "OpenAI, launch post", url: "https://openai.com/index/introducing-gpt-4-5/", status: "confirmed" },
+  { model: "gpt-5", date: "2025-08-07", tier: "disclosed",
+    text: "A system, not one model: a fast model, a \"thinking\" model and \"a real-time router that quickly decides which to use\".",
+    source: "OpenAI, launch post", url: "https://openai.com/index/introducing-gpt-5/", status: "confirmed" },
+  { model: "gpt-5", date: "2025-09-26", tier: "estimated",
+    text: "Used less training compute than GPT-4.5 \"because OpenAI focused on scaling post-training\"; GPT-6 is \"probably\" going to need more than GPT-4.5.",
+    source: "Epoch AI (Edelman, Denain, Sevilla, Ho)", url: "https://epoch.ai/gradient-updates/why-gpt5-used-less-training-compute-than-gpt45-but-gpt6-probably-wont", status: "unverified" },
+  { model: "gpt-5", date: "2025-10-13", tier: "estimated", size: "≈100B active",
+    text: "\"Probably a 'mid-sized' frontier model with ~100B active params\", trained on about 5×10²⁵ FLOP including reinforcement learning, less than GPT-4.5's more than 10²⁶.",
+    source: "Epoch AI newsletter", url: "https://epochai.substack.com/p/notes-on-gpt-5-training-compute", status: "unverified" },
+  ikp("gpt-5", "2.0T", "614B–6.3T", { note: "Tested with reasoning on. Read with Epoch's ~100B active, that would mean about 5% of weights active per token, typical of a sparse model." }),
+
+  // ---- GPT-5.5: a new base, and one instrument with three readings ----
+  { model: "gpt-5.5", date: "2026-03-25", tier: "rumored",
+    text: "OpenAI finished pretraining a new base model codenamed \"Spud\", reportedly the one that shipped as GPT-5.5. OpenAI never used the name.",
+    source: "The Information, via The Decoder", url: "https://the-decoder.com/openai-ceo-sam-altman-reportedly-teases-a-very-strong-model-internally-that-can-really-accelerate-the-economy/", status: "unverified" },
+  { model: "gpt-5.5", date: "2026-04-23", tier: "disclosed",
+    text: "\"Co-designed for, trained with, and served on NVIDIA GB200 and GB300 NVL72 systems\"; OpenAI added that larger models are often slower to serve, but GPT-5.5 matches GPT-5.4's speed.",
+    source: "OpenAI, launch post", url: "https://openai.com/index/introducing-gpt-5-5/", status: "confirmed" },
+  { model: "gpt-5.5", date: "2026-04-27", tier: "estimated",
+    text: "First version of the knowledge-probe paper: about 9.7T open-model-equivalent parameters.",
+    source: "IKP paper, v1", url: "https://arxiv.org/abs/2604.24827v1", status: "superseded" },
+  { model: "gpt-5.5", date: "2026-05-01", tier: "estimated", size: "≈1.5T",
+    text: "A replication found the released code floored scores at zero, contrary to the paper, and about 10% of questions ambiguous or wrong. Corrected refit: about 1.5T, with bands of about ±5.7×. Verdict: estimates from the method are \"unreliable and sensitive to methodological choices\".",
+    source: "Sturgeon & LawrenceC, LessWrong", url: "https://www.lesswrong.com/posts/veFMEzDDyWaer2Sms/sanity-checking-incompressible-knowledge-probes", status: "contested" },
+  { model: "gpt-5.5", date: "2026-07-05", tier: "estimated", size: "≈4.7T",
+    text: "Second version, with revised scoring: about 4.7T open-model-equivalent parameters, 90% band 1.5T–15.1T. The same instrument read 9.7T, 1.5T and 4.7T within ten weeks.",
+    source: "IKP paper, v2", url: IKP_URL, status: "contested" },
+
+  // ---- GPT-5.6 ----
+  { model: "gpt-5.6-sol", date: "2026-06-26", tier: "disclosed", ledger: false,
+    text: "Previewed to a small group of trusted partners first: \"At their request, we are starting with a limited preview\", the request being the U.S. government's. Also served on Cerebras at up to 750 tokens a second for select customers.",
+    source: "OpenAI, preview post", url: "https://openai.com/index/previewing-gpt-5-6-sol/", status: "confirmed" },
+  { model: "gpt-5.6-sol", date: "2026-07-09", tier: "disclosed",
+    text: "Sol, Terra and Luna are \"three model sizes\" (separate models, not settings of one), launched at $5 / $30, $2.50 / $15 and $1 / $6. No parameter counts.",
+    source: "OpenAI, launch post", url: "https://openai.com/index/gpt-5-6/", status: "confirmed" },
+  { model: "gpt-5.6-terra", date: "2026-07-09", tier: "disclosed", ledger: false,
+    text: "One of \"three model sizes\" in the GPT-5.6 series, between Sol and Luna. No parameter counts.",
+    source: "OpenAI, launch post", url: "https://openai.com/index/gpt-5-6/", status: "confirmed" },
+  { model: "gpt-5.6-luna", date: "2026-07-09", tier: "disclosed", ledger: false,
+    text: "The smallest of \"three model sizes\" in the GPT-5.6 series. No parameter counts.",
+    source: "OpenAI, launch post", url: "https://openai.com/index/gpt-5-6/", status: "confirmed" },
+
+  // ---- GPT-6 ----
+  { model: "gpt-6-astra", date: "2026-08-10", tier: "rumored", size: "10T",
+    text: "An anonymous X account, relayed by KuCoin's news feed, said GPT-6 would have 10T parameters and launch in August. The launch date was wrong; OpenAI declined to discuss size.",
+    source: "KuCoin news flash", url: "https://www.kucoin.com/news/flash/openai-to-launch-gpt-6-with-10-trillion-parameters-in-august", status: "unverified" },
+  { model: "gpt-6-astra", date: "2026-09-03", tier: "disclosed",
+    text: "\"The first time we've pretrained on more than 100,000 GPUs at our Stargate site\" (Aidan Clark, OpenAI). Greg Brockman said the same to Stratechery, and Jensen Huang put it at about 100,000 Grace Blackwell GPUs. An OpenAI spokesperson called Astra \"a very large model\".",
+    source: "Fortune; Stratechery; Nvidia", url: ASTRA_FORTUNE, status: "corroborated" },
+  { model: "gpt-6-astra", date: "2026-09-03", tier: "rumored",
+    text: "Part of the network uses \"recurrent depth\", or looped Transformers, which reason in internal steps rather than words. OpenAI researchers told Fortune its use was limited; chief scientist Jakub Pachocki said architecture details would come later. None have.",
+    source: "The Information, via Fortune", url: "https://fortune.com/2026/09/03/reports-openais-astra-model-uses-a-new-more-efficient-ai-architecture-alarms-ai-safety-experts-who-worry-the-method-makes-models-harder-to-control/", status: "unverified" },
+  { model: "gpt-6-luna", date: "2026-09-22", tier: "disclosed", ledger: false,
+    text: "\"We trained GPT-6 Sol and Luna with similar methods as GPT-6 Astra.\" Sizes not disclosed.",
+    source: "OpenAI, launch post", url: "https://openai.com/index/introducing-gpt-6-sol-and-luna/", status: "confirmed" },
+  { model: "gpt-6.1-sol", date: "2026-09-29", tier: "disclosed", ledger: false,
+    text: "Matches Astra on agentic coding, computer use and professional work \"at one-fifth of Astra's standard input and output token prices\".",
+    source: "OpenAI, launch post", url: "https://openai.com/index/introducing-gpt-6-1-sol/", status: "confirmed" },
+
+  // ================= Anthropic =================
+  { model: "claude-3.7-sonnet", date: "2025-03-02", tier: "rumored",
+    text: "Anthropic told Ethan Mollick that 3.7 Sonnet should not be considered a 10²⁶ FLOP model and cost a few tens of millions to train; not confirmed on the record.",
+    source: "Ethan Mollick, via Simon Willison", url: "https://simonwillison.net/2025/Mar/2/ethan-mollick/", status: "unverified" },
+  ikp("claude-3.7-sonnet", "1.1T", "348B–3.6T", { fromData: true }),
+  ikp("claude-opus-4.1", "847B", "265B–2.7T", { note: "Tested with reasoning on." }),
+  ikp("claude-opus-4.5", "892B", "279B–2.9T"),
+  { model: null, modelName: "Anthropic (compute)", lab: "anthropic", date: "2025-10-29", tier: "disclosed",
+    text: "Amazon's Project Rainier, about 500,000 Trainium2 chips, gives Anthropic \"five times the compute power\" it used to train its previous models.",
+    source: "Amazon", url: "https://www.aboutamazon.com/news/aws/aws-project-rainier-ai-trainium-chips-compute-cluster", status: "confirmed" },
+  { model: null, modelName: "Claude Mythos (pre-release)", lab: "anthropic", date: "2026-03-26", tier: "rumored",
+    text: "A leaked draft described \"a new tier of model: larger and more intelligent than our Opus models\". Anthropic confirmed the model; its later wording puts the tier above Opus in capability but never restates \"larger\".",
+    source: "Fortune", url: "https://fortune.com/2026/03/26/anthropic-says-testing-mythos-powerful-new-ai-model-after-data-leak-reveals-its-existence-step-change-in-capabilities/", status: "unverified" },
+  { model: null, modelName: "Anthropic (compute)", lab: "anthropic", date: "2026-06-03", tier: "disclosed",
+    text: "SpaceX's IPO filing: Anthropic agreed to pay $1.25 billion a month through May 2029 for about 325,000 Nvidia GPUs on xAI's Colossus clusters.",
+    source: "SpaceX, Form S-1/A", url: S1A_URL, status: "confirmed" },
+  { model: "claude-fable-5", date: "2026-06-09", tier: "disclosed",
+    text: "Fable 5 and Mythos 5 are one model: Mythos 5 is \"the same underlying model as Fable 5, but with the safeguards lifted in some areas\". \"Mythos-class\" models sit above Opus in capability.",
+    source: "Anthropic, launch post", url: FABLE5_URL, status: "confirmed" },
+  { model: "claude-fable-5", date: "2026-06-30", tier: "disclosed", ledger: false,
+    text: "On June 12 \"the US government applied export controls to our newest models\"; Anthropic suspended Fable 5 and Mythos 5 for all users. The controls were lifted June 30, and Fable 5 returned July 1.",
+    source: "Anthropic, redeployment post", url: "https://www.anthropic.com/news/redeploying-fable-5", status: "confirmed" },
+  ikp("claude-fable-5", "3.5T", "1.1T–11.2T", { ledger: true,
+    note: "The only method-based size figure for any Fable model. It reads far above the Opus models the same paper measured (Opus 4.8: about 236B), though heavy refusals can drag a model's score down." }),
+  { model: "claude-fable-5", date: "2026-08-07", tier: "rumored", size: "≈5T",
+    text: "\"Industry estimates\" put Mythos 5 at about 8T parameters and Fable 5 at about 5T, per the FT; Reuters could not verify. Anthropic says the two are the same underlying model, so the figures cannot both be right.",
+    source: "Financial Times, via Reuters", url: FT_FABLE_URL, status: "contested" },
+  { model: "claude-fable-5.1", date: "2026-07-05", tier: "estimated", ledger: false,
+    text: "No estimate covers Fable 5.1 itself. For Fable 5, the knowledge-probe paper gives about 3.5T open-model-equivalent parameters (90% band 1.1T–11.2T), from a method under dispute.",
+    source: "IKP paper, v2", url: IKP_URL, status: "contested" },
+  { model: "claude-fable-5.1", date: "2026-08-07", tier: "rumored", ledger: false,
+    text: "For Fable 5, the FT cited \"industry estimates\" of about 5T parameters (and 8T for Mythos 5, which Anthropic says is the same model). Nothing circulates for 5.1.",
+    source: "Financial Times, via Reuters", url: FT_FABLE_URL, status: "contested" },
+  { model: "claude-fable-5.1", date: "2026-09-01", tier: "disclosed", ledger: false,
+    text: "Fable 5.1 and Mythos 5.1 \"are the same model, but with different levels of safeguards\". Knowledge cutoff June 2026.",
+    source: "Anthropic, launch post", url: "https://www.anthropic.com/claude-fable-and-mythos-5-1", status: "confirmed" },
+  { model: "claude-opus-5", date: "2026-07-24", tier: "disclosed", ledger: false,
+    text: "\"Comes close to the frontier intelligence of Claude Fable 5 at half the price.\"",
+    source: "Anthropic, launch post", url: "https://www.anthropic.com/news/claude-opus-5", status: "confirmed" },
+  { model: "claude-opus-5.5", date: "2026-09-22", tier: "disclosed",
+    text: "\"Opus 5.5 requires less compute to serve than Opus 5, and its pricing reflects that\"; output is more than 30% faster.",
+    source: "Anthropic, launch post", url: "https://www.anthropic.com/news/claude-opus-5-5", status: "confirmed" },
+
+  // ================= Google =================
+  { model: null, modelName: "Gemini 1.0 Nano", lab: "google", date: "2023-12-06", tier: "disclosed",
+    text: "Nano-1 has 1.8B parameters and Nano-2 3.25B: the only Gemini parameter counts Google has published.",
+    source: "Google DeepMind, Gemini 1.0 report", url: "https://storage.googleapis.com/deepmind-media/gemini/gemini_1_report.pdf", status: "confirmed" },
+  { model: null, modelName: "Gemini 1.5 Pro", lab: "google", date: "2024-02-15", tier: "disclosed",
+    text: "\"A sparse mixture-of-expert (MoE) Transformer-based model\": the first frontier lab to confirm MoE for a flagship. Every Gemini card since says the same.",
+    source: "Google DeepMind, Gemini 1.5 report", url: "https://storage.googleapis.com/deepmind-media/gemini/gemini_v1_5_report.pdf", status: "confirmed" },
+  { model: "gemini-2.5-pro", date: "2025-06-17", tier: "disclosed",
+    text: "\"The Gemini 2.5 models are sparse mixture-of-experts (MoE)\" transformers, the first family trained on TPUv5p; smaller models are distilled from larger ones.",
+    source: "Google DeepMind, Gemini 2.5 report", url: "https://storage.googleapis.com/deepmind-media/gemini/gemini_v2_5_report.pdf", status: "confirmed" },
+  ikp("gemini-2.5-pro", "3.0T", "943B–9.6T", { ledger: true, note: "The paper leaves out Gemini 3.x because it used Gemini 3.1 Pro to help write its hardest questions." }),
+  { model: null, modelName: "Custom Gemini for Apple's Siri", lab: "google", date: "2025-11-05", tier: "rumored",
+    text: "Apple will use a 1.2-trillion-parameter Gemini model for Siri, at almost $1B a year, per Bloomberg. Apple and Google confirmed the partnership in January 2026, but not the size.",
+    source: "Bloomberg, via MacTech", url: "https://www.mactech.com/2025/11/05/apple-will-pay-almost-1-billion-a-year-for-a-custom-gemini-model-to-power-siri/", status: "unverified" },
+  { model: "gemini-3-pro", date: "2025-11-18", tier: "disclosed",
+    text: "A sparse mixture-of-experts model trained on TPUs, not a fine-tune of a prior model; \"each subsequent model in the Gemini 3 Pro family is based on Gemini 3 Pro\".",
+    source: "Google DeepMind, model card", url: "https://deepmind.google/models/model-cards/gemini-3-pro/", status: "confirmed" },
+  { model: "gemini-3.1-pro", date: "2026-02-19", tier: "disclosed", ledger: false,
+    text: "\"Gemini 3.1 Pro is based on Gemini 3 Pro.\"",
+    source: "Google DeepMind, model card", url: "https://deepmind.google/models/model-cards/gemini-3-1-pro/", status: "confirmed" },
+  { model: "gemini-3.8-flash", date: "2026-09-02", tier: "disclosed", ledger: false,
+    text: "Based on Gemini 3.7 Flash, itself in the line descending from the Gemini 3 base; knowledge cutoff March 2026 in some domains.",
+    source: "Google DeepMind, model card", url: "https://deepmind.google/models/model-cards/gemini-3-8-flash/", status: "confirmed" },
+  { model: "gemini-4-argon", date: "2026-09-30", tier: "disclosed",
+    text: "\"Larger in size than Google's previous line of advanced 'Pro' models\", a Google spokesperson said. No parameter count.",
+    source: "Reuters, via Khaleej Times", url: "https://www.khaleejtimes.com/business/google-announces-gemini-4-flagship-ai-model-after-months-of-delays-2", status: "unverified" },
+  { model: "gemini-4-argon", date: "2026-10-13", tier: "disclosed",
+    text: "\"A large scale sparse mixture-of-experts (MoE)\" model that \"is not a modification or a fine-tune of a prior model\": the first new Gemini base since Gemini 3.",
+    source: "Google DeepMind, model card", url: "https://deepmind.google/models/model-cards/gemini-4-argon/", status: "confirmed" },
+
+  // ================= xAI =================
+  { model: null, modelName: "Grok-1", lab: "xai", date: "2024-03-17", tier: "disclosed",
+    text: "Released with weights: a 314B-parameter mixture of experts with 25% of the weights active on a given token.",
+    source: "xAI, open release", url: "https://x.ai/news/grok-os", status: "confirmed" },
+  { model: "grok-2", date: "2024-04-10", tier: "disclosed",
+    text: "Training Grok 2 takes about 20,000 Nvidia H100s; Grok 3 would need about 100,000.",
+    source: "Elon Musk, via Data Center Dynamics", url: "https://www.datacenterdynamics.com/en/news/elon-musk-xais-grok-2-requires-20000-nvidia-h100-gpus-grok-3-may-need-100000/", status: "unverified" },
+  { model: "grok-2", date: "2025-08-22", tier: "disclosed",
+    text: "Weights released: a mixture of experts with 8 experts (2 active) plus a dense layer, 64 layers, about 500 GB of files. xAI gave no parameter count, but anyone can now count them.",
+    source: "xAI, Hugging Face", url: "https://huggingface.co/xai-org/grok-2", status: "confirmed" },
+  { model: "grok-3", date: "2025-02-19", tier: "disclosed",
+    text: "Trained on the Colossus supercluster \"with 10x the compute of previous state-of-the-art models\".",
+    source: "xAI, launch post", url: "https://x.ai/news/grok-3", status: "confirmed" },
+  { model: "grok-3", date: "2025-11-14", tier: "disclosed", size: "3T",
+    text: "\"Grok-3 and -4 are based on a 3 trillion parameter model\", Musk told an investor conference. Grok 5 would be 6T.",
+    source: "Elon Musk, via LifeArchitect transcript", url: MUSK_BARON, status: "unverified" },
+  { model: "grok-4", date: "2025-11-14", tier: "disclosed", size: "3T", ledger: false,
+    text: "\"Grok-3 and -4 are based on a 3 trillion parameter model\", Musk told an investor conference.",
+    source: "Elon Musk, via LifeArchitect transcript", url: MUSK_BARON, status: "unverified" },
+  { model: "grok-4", date: "2025-07-09", tier: "disclosed",
+    text: "Used the 200,000-GPU Colossus to run reinforcement learning \"at pretraining scale\".",
+    source: "xAI, launch post", url: "https://x.ai/news/grok-4", status: "confirmed" },
+  ikp("grok-3", "2.1T", "642B–6.6T"),
+  ikp("grok-4", "2.0T", "619B–6.3T"),
+  { model: "grok-4.20", date: "2026-02-17", tier: "disclosed", size: "500B",
+    text: "\"This is just our V8 small foundation model, so 500B params.\"",
+    source: "Elon Musk on X", url: "https://x.com/elonmusk/status/2023840935285760142", status: "unverified" },
+  ikp("grok-4.20", "689B", "215B–2.2T", { note: "Roughly consistent with Musk's stated 500B." }),
+  { model: "grok-3", date: "2026-06-03", tier: "disclosed",
+    text: "SpaceX's IPO filing: the first Colossus cluster, about 100,000 H100s (about 130 MW), came online in 122 days; Colossus II added about 110,000 GB200s in 91 days, then 110,000 GB300s.",
+    source: "SpaceX, Form S-1/A", url: S1A_URL, status: "confirmed" },
+  { model: null, modelName: "Grok 5 (in training)", lab: "xai", date: "2026-06-03", tier: "disclosed",
+    text: "\"Grok-5, which is currently being trained at COLOSSUS II\"; next-generation models are expected to \"scale toward multiple trillions of parameters\". Musk has said Grok 5 is 6T.",
+    source: "SpaceX, Form S-1/A", url: S1A_URL, status: "confirmed" },
+  { model: "grok-4.6", date: "2026-06-28", tier: "disclosed", size: "1.5T", ledger: false,
+    text: "Musk said Grok 4.5 would have 1.5 trillion parameters; xAI says 4.6 is 4.5 with a longer supplemental training run.",
+    source: "Elon Musk on X", url: "https://x.com/elonmusk/status/2071184354756477041", status: "unverified" },
+  { model: "grok-4.6", date: "2026-07-28", tier: "disclosed", size: "1.5T",
+    text: "Grok 4.6 is a 1.5-trillion-parameter model (presumably total, in a sparse model).",
+    source: "Elon Musk on X", url: "https://x.com/elonmusk/status/2082123925283041545", status: "unverified" },
+  { model: "grok-4.7", date: "2026-07-28", tier: "disclosed", size: "2.1T",
+    text: "\"Grok 4.7 will be the 2.1T model released a few weeks later… slightly slower to serve.\" A forward-looking statement made before release. Epoch's database enters it as 2.1 billion, a typo.",
+    source: "Elon Musk on X, quoted by Epoch AI", url: "https://epoch.ai/data/ai-models", status: "unverified" },
+  { model: "grok-4.7", date: "2026-09-21", tier: "disclosed",
+    text: "\"Grok 4.7 uses a new, larger base model compared to Grok 4.6.\" No size given, but it confirms the direction of Musk's 2.1T.",
+    source: "xAI, launch post", url: "https://x.ai/news/grok-4-7", status: "confirmed" },
+  { model: null, modelName: "Grok 4.8 (in training)", lab: "xai", date: "2026-09-14", tier: "disclosed",
+    text: "A 2.5-trillion-parameter model wrapping up its initial training run, per Musk, relayed by the press.",
+    source: "Elon Musk, via Crypto Briefing", url: "https://cryptobriefing.com/musk-grok-3-trillion-parameter-model/", status: "unverified" },
+];
+
+// ------------------------------------------------------------
+const CHART_TAKES = {
+  speed: "<b>Investor takeaway:</b> The two most expensive models, Claude Fable 5.1 and GPT-6 Astra ($20 blended), are also among the slowest, at about 50–55 tokens a second. Price and speed agree, so they are probably the largest models in commercial service. GPT-6.1 Sol is the case to watch: Astra's speed at a fifth of Astra's price. The open reference shows what 5 billion active parameters look like: gpt-oss-120b runs four times faster than Astra at about 1/75th of the price.",
+  compute: "<b>Investor takeaway:</b> Epoch's central estimates show a pause and a restart. GPT-4.5 (about 4×10²⁶ FLOP) was followed by GPT-5 at roughly 7×10²⁵: Epoch's explanation is that OpenAI got more from scaling post-training than from a bigger pretraining run. In September 2025 Epoch predicted GPT-6 would need more compute than GPT-4.5; its estimate for GPT-6 Astra, near 10²⁷ on more than 100,000 GPUs at Stargate, says it did, though both are Epoch's numbers. The ranges overlap, so treat the dip as likely rather than proven. The open-weight rulers sit between 3×10²⁴ and 4×10²⁵. Note what is missing: no estimate for any Gemini after 1.0 Ultra or any Claude after 3.7 Sonnet.",
+  ladder: "<b>Investor takeaway:</b> The floor fell; the ceiling did not. The cheapest current tier (Claude Haiku 5.5, GPT-6 Luna: $0.20 blended) costs about 1/190th of GPT-4's launch price. Yet every year has had a top model priced between $20 and $100 blended. GPT-4.5 ($75 / $150) was the most expensive, and left the API within five months. Anthropic cut Opus by two-thirds in late 2025, then put Fable above it at $10 / $50. Deflation shows up at a fixed level of capability, not at the frontier.",
+};
+
+const OPEN_SIBLINGS = [
+  { lab: "openai", models: "gpt-oss-120b, gpt-oss-20b · Aug 2025",
+    what: "Mixture-of-experts models of 117B and 21B parameters with 5.1B and 3.6B active (128 and 32 experts, 4 active per token), shipped in 4-bit MXFP4 so the larger one fits on a single 80 GB GPU. OpenAI disclosed 2.1 million H100-hours of training for the 120B. No open-weight successor has followed.",
+    reveals: "A recipe built on very sparse experts (about 4% of weights active), attention that alternates full and sliding-window layers, and o-series reasoning. It is the best public evidence of how OpenAI builds its closed models, none of which has an official parameter count." },
+  { lab: "google", models: "Gemma 3 · 2025, Gemma 4 · Apr 2026",
+    what: "Gemma 3 is dense, with five local-attention layers for every global one, trained on up to 14T tokens. Gemma 4 adds a mixture of experts of 25.2B parameters with 3.8B active (128 experts, 8 active plus 1 shared) beside a 30.7B dense model, \"built from the same research and technology as Gemini 3\".",
+    reveals: "The efficiency tricks Google uses at scale. Google's reports and model cards describe Gemini 1.5, 2.5, 3 and 4 as sparse mixtures of experts, but give no sizes beyond Gemini 1.0 Nano's." },
+  { lab: "xai", models: "Grok-1 · Mar 2024, Grok 2 · Aug 2025",
+    what: "Grok-1: a 314B mixture of experts with a quarter of its weights active per token. Grok 2: 8 experts with 2 active plus a dense layer, about 500 GB of weights, under a license that bars using it to train other models. Grok 3's weights, promised for early 2026, have not appeared.",
+    reveals: "That xAI open-sources models about a generation behind its frontier, which lets outsiders check its stated sizes against real weights. xAI, now part of SpaceX, also discloses the most about compute, down to GPU counts in SpaceX's IPO filing." },
+  { lab: "anthropic", models: "none",
+    what: "Anthropic has released no open-weight language model and publishes no parameter counts.",
+    reveals: "Nothing about the models. Its compute shows up in partners' disclosures instead: Amazon's Project Rainier, up to a million Google TPUs, $30B of Azure, and, per SpaceX's IPO filing, about $1.25B a month for xAI's Colossus clusters through May 2029. Claude is the hardest frontier family to size from outside." },
+];
+
+const METHODS = [
+  { name: "Read the price sheet", tier: "disclosed",
+    how: "The price per million tokens has to cover serving cost plus margin. Within one lab's lineup, the price ratio between tiers roughly tracks the cost ratio.",
+    catch: "Margins differ by lab and change with strategy, and a launch price can be a land grab. OpenAI cut GPT-5.6 Luna by 80% three weeks after launch. Reasoning models also bill hidden thinking tokens, so price per token understates cost per task.",
+    example: "Fable 5.1 costs 2.5× Opus 5.5 per token. Anthropic says Opus 5.5 \"requires less compute to serve than Opus 5, and its pricing reflects that\": price tracking cost, in the lab's own words." },
+  { name: "Read the API's fingerprints", tier: "measured",
+    how: "A model's output probabilities live in a space as wide as its final hidden layer. Query the API enough and that width falls out, which bounds the model's size.",
+    catch: "Providers locked down the access that made it work after the 2024 papers, and width maps only loosely to total parameters in a mixture of experts.",
+    example: "Carlini et al. recovered two OpenAI models' widths exactly, confirmed by OpenAI; Finlayson et al. put gpt-3.5-turbo's near 4,096, suggesting about 7B parameters." },
+  { name: "Time the output", tier: "measured",
+    how: "Each new token requires reading the active weights from memory, so more active parameters means fewer tokens a second on the same hardware. Combine speed with price and an assumption about margins, and you get a size estimate.",
+    catch: "Hardware moves speed as much as size does: OpenAI serves GPT-5.6 Sol on Cerebras at up to 750 tokens a second for select customers. Batch size and speculative decoding matter too; in one snapshot, Opus 5.5 measured 77 to 97 tokens a second across its reasoning settings.",
+    example: "Epoch's Ege Erdil used speed and price to put GPT-4o near 200B parameters (±2×) and Claude 3.5 Sonnet near 400B." },
+  { name: "Count the chips", tier: "estimated",
+    how: "Chips are hard to hide: data centers, power contracts, partners' announcements and IPO filings reveal cluster sizes. Multiply by training time and a utilization rate to get training FLOP. Epoch publishes the arithmetic and a 90% range.",
+    catch: "Utilization and duration are guesses, and the result is training compute, not parameters. Converting to parameters needs an assumed tokens-per-parameter ratio, which adds another factor of several.",
+    example: "GPT-6 Astra: more than 100,000 GPUs (per OpenAI) × about 90 days × about 25% utilization ≈ 9×10²⁶ FLOP." },
+  { name: "Do the 6ND arithmetic", tier: "estimated",
+    how: "Training a transformer costs about 6 FLOP per active parameter per training token. Know any two of compute, active parameters and tokens, and you can solve for the third.",
+    catch: "Only as good as its inputs, and for a closed model at least one input is usually a guess.",
+    example: "GPT-4: 6 × 280B active × 13T tokens ≈ 2.2×10²⁵ FLOP, close to Epoch's 2.1×10²⁵." },
+  { name: "Quiz it on obscure facts", tier: "estimated",
+    how: "Bigger models memorize more rare facts. The knowledge-probe (IKP) paper fits accuracy on 1,400 obscure questions against 93 open models of known size (R² 0.91), then reads closed models off the same line.",
+    catch: "It measures \"effective\" capacity, not weights; refusals drag scores down (it reads Claude Opus 4 at 49B); above 1T only two open models anchor the line; and a replication found a scoring bug. GPT-5.5's estimate went 9.7T, then 1.5T, then 4.7T in ten weeks.",
+    example: "Claude Fable 5: about 3.5T, 90% band 1.1T–11.2T. The only method-based size figure for a Fable model." },
+  { name: "Ask the CEO", tier: "disclosed",
+    how: "Sometimes the company just says it. Elon Musk posts Grok's parameter counts; Dario Amodei called Claude 3.5 Sonnet \"mid-sized\"; Nvidia's CEO put OpenAI's 2024 flagship at about 1.8T on stage.",
+    catch: "Unaudited, often undefined (total or active?), sometimes forward-looking. Musk's 2026 figures (0.5T, 1.5T, 2.1T) sit oddly beside his 2025 claim that Grok 3 and 4 used a 3T base. Check them against the compute and speed rungs.",
+    example: "\"Grok 4.7 will be the 2.1T model\" was posted weeks before release; xAI's launch post then confirmed \"a new, larger base model\"." },
+  { name: "Trust a leak", tier: "rumored",
+    how: "Analysts and reporters with sources inside labs or their suppliers report architecture details.",
+    catch: "No way to check at the time. Some leaks hold up (SemiAnalysis on GPT-4); some figures turn out to be recycled guesses (the withdrawn \"20B ChatGPT\"); some contradict the lab outright (the FT's 5T Fable and 8T Mythos, which Anthropic says are the same model).",
+    example: "" },
+];
+
+const TAKEAWAYS = [
+  { head: "Price and speed are the two numbers you can always observe. Read them together.",
+    body: "When the priciest model is also the slowest, it is probably the biggest. That makes Claude Fable 5.1 and GPT-6 Astra the likeliest candidates for the largest models in commercial service, and suggests their $10 / $50 price reflects serving cost, not just positioning." },
+  { head: "Training compute is the best size measure for closed models, and the open–closed gap is wide.",
+    body: "Epoch puts the 2026 closed frontier near 10²⁷ FLOP; the largest open-weight runs with known compute are near 10²⁵. Open labs, many of them Chinese and short of top-end GPUs, compete on efficiency per FLOP; the closed frontier competes on FLOP." },
+  { head: "Watch the pretraining cycle, not the version number.",
+    body: "GPT-5 likely used less pretraining compute than GPT-4.5, and GPT-6 Astra far more. Most releases are post-training updates on an existing base: every Gemini 3.x descends from Gemini 3 Pro, Grok 4.6 from Grok 4.5. New bases arrive when new clusters come online, as Astra did on Stargate's first 100,000-GPU run, so data-center milestones are a leading indicator of the next jump in capability and price." },
+  { head: "Expect orders of magnitude, not numbers.",
+    body: "GPT-4o has four published size figures from four methods, from a 111B floor to 391B. Claude Fable 5's only estimate spans 1.1T to 11.2T. Treat any single parameter count for a closed model as a range of at least 3× either way, and distrust precise-looking figures with no method: several trace back to blog posts." },
+  { head: "The frontier price does not deflate; the floor does.",
+    body: "Model AI-application costs at a fixed capability level, which gets cheaper fast, but do not extrapolate that to the best model, which labs keep pricing at $20 or more blended. Premium tiers such as Fable and Astra are where labs test pricing power." },
+  { head: "Governments now sit in the release path of top models.",
+    body: "GPT-5.6 was previewed to a small group at the U.S. government's request; U.S. export controls suspended Claude Fable 5 three days after launch, for nearly three weeks; Gemini 4 Argon went to cyber defenders first. For the top tier, release timing and availability are partly policy variables now, and revenue forecasts should carry that risk." },
+  { head: "Disclosure is a strategy, and it sets your error bars.",
+    body: "xAI's CEO posts parameter counts and SpaceX's IPO filing lists the GPU clusters; OpenAI describes clusters but has never given a parameter count for a closed model; Google's cards confirm mixture-of-experts but not size; Anthropic discloses least about its models, though its compute deals surface in partners' filings. The less a lab discloses, the wider the error bars on any valuation built on its unit economics." },
+];
+
+const CLOSED_SOURCES = 'Sources: list prices and context windows from lab launch posts and pricing pages, cross-checked against <a href="https://openrouter.ai/models" target="_blank" rel="noopener">OpenRouter\'s public model list</a> and Artificial Analysis; output speed from <a href="https://artificialanalysis.ai/" target="_blank" rel="noopener">Artificial Analysis</a> (snapshot of Oct 22, 2026; attribution required); training-compute estimates from <a href="https://epoch.ai/data/ai-models" target="_blank" rel="noopener">Epoch AI, "Data on AI Models"</a> (CC BY); every other claim as cited in the ledger. Not investment advice.';

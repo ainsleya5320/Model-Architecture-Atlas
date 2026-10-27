@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Model Atlas — the field of AI models, read through an investor's lens</title>
 <meta name="description" content="A map of every subfield you need to be competent about AI models: architectures, data, training, inference, agents, evaluation, interpretability, safety, economics and policy, with readings, self-checks and an investor lens.">
-<link rel="stylesheet" href="styles.css?v=20261016b">
+<link rel="stylesheet" href="styles.css?v=20261026a">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -23,12 +23,14 @@
         <a href="#subfields" data-tab="subfields">Subfields</a>
         <a href="#tracks" data-tab="tracks">Research tracks</a>
         <a href="#reading" data-tab="reading">Reading list</a>
+        <a href="#researchers" data-tab="researchers">Researchers</a>
       </div>
     </div>
     <div class="navgroup">
       <span class="navlabel">The models</span>
       <div class="navlinks">
         <a href="#models" data-tab="models">Model index</a>
+        <a href="#closed" data-tab="closed">Closed frontier</a>
         <a href="#compare" data-tab="compare">Compare</a>
         <a href="#concepts" data-tab="concepts">Concepts</a>
         <a href="#glossary" data-tab="glossary">Glossary</a>
@@ -105,7 +107,7 @@
   <section class="tab" id="tab-reading">
     <div class="card">
       <h2>The reading list</h2>
-      <p class="body">The canonical papers, posts, courses and tools for every subfield, with about forty marked <b>essential</b>: the core canon. The suggested habit is one paper a week, noting what was claimed, how it was tested, and what result would have falsified it. Tick items as you read them and open <b>Notes</b> to keep that journal; both are saved in this browser.</p>
+      <p class="body">The canonical papers, posts, courses and tools for every subfield, with about forty marked <b>essential</b>: the core canon. The suggested habit is one paper a week, noting what was claimed, how it was tested, and what result would have falsified it. Tick items as you read them and open <b>Notes</b> to keep that journal; both are saved in this browser. For the people behind the papers, see <a href="#researchers">Researchers</a>.</p>
     </div>
     <div class="filters" id="readFilters">
       <input type="search" id="readSearch" placeholder="Search title, author, topic…" aria-label="Search the reading list">
@@ -123,6 +125,54 @@
       <button type="button" class="fbtn" data-act="import">Import</button>
       <button type="button" class="fbtn" data-act="reset">Reset</button>
     </div>
+  </section>
+
+  <!-- ================= RESEARCHERS ================= -->
+  <section class="tab" id="tab-researchers">
+    <div class="card chart-card">
+      <div class="charthead">
+        <h2>The researchers: who built the field, and how their work is cited</h2>
+        <span class="note" id="ppAsOf"></span>
+      </div>
+      <div id="ppIntro"></div>
+    </div>
+
+    <div class="filters">
+      <input type="search" id="ppSearch" placeholder="Search name, paper, lab…" aria-label="Search researchers">
+      <span class="cl-labs" id="ppGroups"></span>
+      <span class="count" id="ppCount"></span>
+    </div>
+    <div class="tablewrap">
+      <table class="models people" id="ppTable"></table>
+    </div>
+    <p class="compare-note">h-index and citations from OpenAlex, which counts fewer citations than Google Scholar, so its numbers run lower; compare people within this table, not against Scholar profiles. An asterisk marks a profile with a known data problem; open the row for details.</p>
+
+    <div class="card chart-card" style="margin-top:18px">
+      <div class="charthead">
+        <h2>The h-index, drawn</h2>
+        <span class="note">hover the curve for individual papers</span>
+      </div>
+      <p class="body">Line up every paper a researcher has written, from most cited to least, and plot each paper's citations against its rank. The h-index is where the curve crosses the diagonal: the largest number h such that h papers each have at least h citations. One blockbuster paper cannot lift it; neither can a pile of uncited ones.</p>
+      <div class="pp-pick"><label for="ppCurveSel" class="sr-only">Researcher</label><select id="ppCurveSel"></select><span class="muted" id="ppCurveNote"></span></div>
+      <div class="svgwrap" id="ppCurve"></div>
+    </div>
+
+    <div class="card chart-card">
+      <div class="charthead">
+        <h2>Breadth versus the landmark paper</h2>
+        <span class="note">click a point to open that researcher</span>
+      </div>
+      <p class="body">The h-index rewards a long record of well-cited work. It barely registers a single paper that changed everything. Plotting it against each person's most-cited paper separates the two kinds of impact.</p>
+      <div class="legend cl-legend" id="ppLandmarkLegend"></div>
+      <div class="svgwrap" id="ppLandmark"></div>
+      <div class="takeaway" id="ppLandmarkTake"></div>
+    </div>
+
+    <div class="card">
+      <h2>Reading it as an investor</h2>
+      <ol class="cl-take" id="ppTake"></ol>
+    </div>
+    <p class="cl-sources" id="ppSources"></p>
   </section>
 
   <!-- ================= MODELS ================= -->
@@ -155,7 +205,90 @@
     <div class="card" style="margin-top:18px">
       <h2 id="closedTitle"></h2>
       <p class="body" id="closedBody"></p>
+      <p class="body" style="margin-top:10px"><a href="#closed">What can be inferred about each closed model, and how sure anyone can be: the Closed frontier tab →</a></p>
     </div>
+  </section>
+
+  <!-- ================= CLOSED FRONTIER ================= -->
+  <section class="tab" id="tab-closed">
+    <div class="card chart-card">
+      <div class="charthead">
+        <h2>The closed frontier: what can be known from outside</h2>
+        <span class="note" id="clAsOf"></span>
+      </div>
+      <p class="body">OpenAI, Anthropic, Google and xAI publish prices and context windows for their flagship models, but not parameter counts or training budgets. Everything else has to be inferred, and the inferences vary a lot in quality. This tab sorts every claim by how it was obtained, so you can weigh a number by its source before you build a thesis on it. The four kinds of evidence, strongest first:</p>
+      <div class="ev-ladder" id="clLadder"></div>
+    </div>
+
+    <div class="filters">
+      <span class="cl-labs" id="clLabs"></span>
+      <label class="tgl"><input type="checkbox" id="clCurrent"> Current lineup only</label>
+      <span class="count" id="clCount"></span>
+    </div>
+    <div class="tablewrap">
+      <table class="models closed" id="clTable"></table>
+    </div>
+    <p class="compare-note">Column icons show the evidence behind each column. Blended price weights input 3:1 over output, the convention Artificial Analysis uses. Prices are list prices at launch; several were cut later. Speed is one snapshot of one deployment, so differences under about 25% are noise.</p>
+
+    <div class="card chart-card" style="margin-top:18px">
+      <div class="charthead">
+        <h2>Price and speed, read together</h2>
+        <span class="note">models with an October 2026 speed reading · hover any point</span>
+      </div>
+      <p class="body">Two numbers anyone can observe. A model with more active parameters costs more to serve and generates tokens more slowly, so the largest models drift to the bottom right. Neither signal is clean on its own: price includes margin, and speed depends on the hardware and how many users share it. When both point the same way, take it seriously. When they disagree, something else is going on.</p>
+      <div class="legend cl-legend" id="clSpeedLegend"></div>
+      <div class="svgwrap" id="clSpeed"></div>
+      <div class="takeaway" id="clSpeedTake"></div>
+    </div>
+
+    <div class="card chart-card">
+      <div class="charthead">
+        <h2>Training compute: estimates with their error bars</h2>
+        <span class="note">Epoch AI estimates · bars are 90% ranges</span>
+      </div>
+      <p class="body">Training compute is the best-documented measure of a closed model's scale, because GPU clusters are hard to hide. Epoch AI estimates it from cluster sizes, training time and benchmark scores, and labels each estimate with a confidence level. The open-weight models (hollow rings) have disclosed compute and serve as the ruler. Read the bars, not the dots.</p>
+      <div class="legend cl-legend" id="clComputeLegend"></div>
+      <div class="svgwrap" id="clCompute"></div>
+      <div class="takeaway" id="clComputeTake"></div>
+    </div>
+
+    <div class="card chart-card">
+      <div class="charthead">
+        <h2>The price ladder</h2>
+        <span class="note">every model in the table, at its launch price</span>
+      </div>
+      <p class="body">Prices at a fixed level of capability fall fast. The price of each lab's best model does not, because labs keep adding a tier on top.</p>
+      <div class="legend cl-legend" id="clLadderLegend"></div>
+      <div class="svgwrap" id="clLadderChart"></div>
+      <div class="takeaway" id="clLadderTake"></div>
+    </div>
+
+    <div class="card">
+      <h2>The claims ledger</h2>
+      <p class="body">Every size, architecture and compute claim this tab relies on, in date order, with where it came from and whether it has held up. Click a model to open its row in the table.</p>
+      <div class="filters" id="clLedgerFilters" style="margin-top:12px"></div>
+      <div class="tablewrap">
+        <table class="ledger" id="clLedger"></table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>What their open models give away</h2>
+      <p class="body">When a closed lab releases open weights, it publishes a sample of its own recipe. These releases are the strongest evidence about how the closed models are built.</p>
+      <div class="sib-grid" id="clSiblings"></div>
+    </div>
+
+    <div class="card">
+      <h2>How outsiders size a closed model</h2>
+      <p class="body">The methods behind the numbers above, roughly from most to least checkable.</p>
+      <div class="method-grid" id="clMethods"></div>
+    </div>
+
+    <div class="card">
+      <h2>Reading it as an investor</h2>
+      <ol class="cl-take" id="clTakeaways"></ol>
+    </div>
+    <p class="cl-sources" id="clSources"></p>
   </section>
 
   <!-- ================= COMPARE ================= -->
@@ -249,11 +382,15 @@
 <script src="field-a.js?v=20261016b"></script>
 <script src="field-b.js?v=20261016b"></script>
 <script src="field-c.js?v=20261016b"></script>
-<script src="field-d.js?v=20261016b"></script>
+<script src="field-d.js?v=20261022a"></script>
 <script src="library.js?v=20261016b"></script>
 <script src="tracks.js?v=20261016b"></script>
 <script src="glossary-plus.js?v=20261016b"></script>
+<script src="closed.js?v=20261022c"></script>
 <script src="app.js?v=20261016b"></script>
-<script src="field-app.js?v=20261016b"></script>
+<script src="closed-app.js?v=20261022c"></script>
+<script src="people.js?v=20261026c"></script>
+<script src="people-app.js?v=20261026b"></script>
+<script src="field-app.js?v=20261026b"></script>
 </body>
 </html>
